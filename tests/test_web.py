@@ -84,3 +84,14 @@ def test_opening_an_item_records_the_time(tmp_path):
     assert r.headers["location"] == "https://x/1"
     assert conn.execute("SELECT opened_at FROM items WHERE id=1"
                         ).fetchone()[0] is not None
+
+
+def test_a_cycle_that_never_finished_is_visible(tmp_path):
+    """A crash between the start and the end leaves `ok` NULL, with no error
+    text. The page must not look like a quiet day."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind)"
+                 " VALUES ('2026-08-30T06:30:00','mail')")
+    conn.commit()
+    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    assert "did not finish" in body.lower()

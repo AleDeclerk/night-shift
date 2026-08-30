@@ -36,14 +36,22 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
         _end_run(conn, run_id, False, cost=spent, error=result.error[:400])
         return
 
+    # Each item commits on its own. One exception in the middle used to throw
+    # away every draft already written and every dollar already spent.
     for item in result.items:
-        if item.bucket == "needs_you":
-            draft = mail_module.write_draft(runner_module, item, cwd=workspace)
-            spent += draft.cost_usd
-        conn.execute(
-            "INSERT INTO items (run_id, created_at, bucket, title, body,"
-            " source_url) VALUES (?,?,?,?,?,?)",
-            (run_id, now.isoformat(), item.bucket, item.title, item.body,
-             item.source_url))
-    conn.commit()
+        try:
+            if item.bucket == "needs_you":
+                draft = mail_module.write_draft(runner_module, item,
+                                                cwd=workspace)
+                spent += draft.cost_usd
+            conn.execute(
+                "INSERT INTO items (run_id, created_at, bucket, title, body,"
+                " source_url) VALUES (?,?,?,?,?,?)",
+                (run_id, now.isoformat(), item.bucket, item.title, item.body,
+                 item.source_url))
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            _end_run(conn, run_id, False, cost=spent,
+                     error=f"{item.title}: {exc}"[:400])
+            return
     _end_run(conn, run_id, True, cost=spent)

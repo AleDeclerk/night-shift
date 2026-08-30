@@ -67,3 +67,30 @@ def test_an_item_that_needs_you_gets_a_draft(tmp_path):
                    now=NOW, ceiling_usd=5.0, workspace=tmp_path)
     assert stub.drafted == 1  # only the needs_you item
     assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 2
+
+
+def test_work_already_done_survives_an_item_that_explodes(tmp_path):
+    """The inserts used to commit once, after the loop. One exception threw
+    away every draft already written and every cost already spent."""
+    from nightshift.mail import Item
+    from nightshift.runner import RunResult
+    conn = db.connect(tmp_path / "s.db")
+
+    class Exploding(Stub):
+        def write_draft(self, *a, **kw):
+            self.drafted += 1
+            if self.drafted == 2:
+                raise RuntimeError("the tool answered nonsense")
+            return RunResult(True, text="one line", cost_usd=0.8)
+
+    stub = Exploding(items=[Item("needs_you", "first", "w", "https://x/1"),
+                            Item("needs_you", "second", "w", "https://x/2")],
+                     cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+
+    assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 1
+    row = _last_run(conn)
+    assert row["ok"] == 0
+    assert "nonsense" in row["error"]
+    assert row["cost_usd"] == 1.3  # the triage and the draft that did work

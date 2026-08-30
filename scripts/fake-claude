@@ -4,4 +4,6 @@ case "${FAKE_MODE:-ok}" in
   ok)   echo '{"result":"hello","total_cost_usd":0.012,"session_id":"s-1"}' ;;
   auth) echo 'Failed to authenticate. API Error: 401 OAuth access token has expired.'; exit 0 ;;
   junk) echo 'not json at all' ;;
+  # A good run whose answer quotes a 401k plan or an error string.
+  mentions401) echo '{"result":"Mail about the 401k plan and a quoted 401 error","total_cost_usd":0.9,"session_id":"s-2"}' ;;
 esac

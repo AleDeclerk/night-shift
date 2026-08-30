@@ -14,6 +14,19 @@ TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
 
 
+def _trouble(last) -> str | None:
+    """A run that dies between its start and its end leaves `ok` NULL and no
+    error text. Without this branch that run reads as a quiet day."""
+    if last is None:
+        return None
+    if last["ok"] is None:
+        return ("The last cycle started at %s and it did not finish. Look at "
+                "/tmp/nightshift.err.log." % last["started_at"])
+    if not last["ok"]:
+        return last["error"]
+    return None
+
+
 def _when(iso: str) -> str:
     """A stale page and a fresh page must not look the same."""
     try:
@@ -42,7 +55,7 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
             "needs_you": bucket("needs_you"),
             "done": bucket("done"),
             "no_action": bucket("no_action"),
-            "error": last["error"] if last and not last["ok"] else None,
+            "error": _trouble(last),
             "last_good": _when(good["started_at"]) if good else "never",
             "spent": round(spent, 2), "ceiling": ceiling_usd})
 
