@@ -1,0 +1,11 @@
+[project]
+name = "nightshift"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = ["fastapi", "uvicorn", "jinja2"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
