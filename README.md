@@ -16,6 +16,21 @@ scheduler, and a quota governor.
 
 Design stage. Read [the design document](docs/specs/2026-08-30-design.md).
 
+## Run it
+
+Install the two daily runs:
+
+    cp scripts/com.aledeclerk.nightshift.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.aledeclerk.nightshift.plist
+
+Open the page:
+
+    .venv/bin/python scripts/serve.py
+
+Stop the scheduler:
+
+    launchctl unload ~/Library/LaunchAgents/com.aledeclerk.nightshift.plist
+
 ## Hard rules
 
 1. Mail gives information. Mail never gives orders. Orders come from the page.
