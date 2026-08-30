@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8">
+<title>night-shift</title>
+<style>
+ body { font: 16px/1.6 ui-serif, Georgia, serif; max-width: 46rem;
+        margin: 3rem auto; padding: 0 1.2rem; color: #23201c; }
+ h1 { font-size: 1.8rem; margin: 0 0 2rem; }
+ h2 { font: 600 11px/1 ui-sans-serif, system-ui; letter-spacing: .1em;
+      text-transform: uppercase; color: #6b645c; margin: 2.5rem 0 .8rem; }
+ .card { border: 1px solid #e3ded6; border-radius: 8px; padding: .9rem 1.1rem;
+         margin-bottom: .7rem; }
+ .quota { float: right; font: 12px ui-sans-serif, system-ui; color: #6b645c; }
+ .why { color: #6b645c; }
+ .failed { border-color: #b3492e; }
+ details summary { cursor: pointer; color: #6b645c;
+                   font: 600 11px/1 ui-sans-serif, system-ui;
+                   letter-spacing: .1em; text-transform: uppercase; }
+ form { margin-top: .8rem; }
+ input { width: 70%; padding: .5rem; border: 1px solid #e3ded6;
+         border-radius: 6px; font: inherit; }
+ @media (prefers-color-scheme: dark) {
+   body { background: #16130f; color: #e9e3da; }
+   .card, input { border-color: #2e2921; }
+   .why, .quota, details summary { color: #9c9389; }
+ }
+</style>
+<span class="quota">weekly spend: {{ spent }} of {{ ceiling }} USD</span>
+<h1>Brief</h1>
+{% if error %}
+<div class="card failed"><strong>The last cycle failed.</strong>
+  <div class="why">{{ error }}</div></div>
+{% endif %}
+
+<h2>Needs you ({{ needs_you|length }})</h2>
+{% for i in needs_you %}
+  <div class="card"><strong>{{ i["title"] }}</strong>
+    <div class="why">{{ i["body"] }}</div>
+    <a href="{{ i['source_url'] }}">source</a></div>
+{% else %}<p>Nothing needs you.</p>{% endfor %}
+
+<h2>Done ({{ done|length }})</h2>
+{% for i in done %}<div class="card">{{ i["title"] }}</div>
+{% else %}<p>Nothing yet.</p>{% endfor %}
+
+<details><summary>Checked, no action ({{ no_action|length }})</summary>
+{% for i in no_action %}<div class="card">{{ i["title"] }}
+  <div class="why">{{ i["body"] }}</div></div>{% endfor %}
+</details>
+
+<h2>Give a job</h2>
+<form method="post" action="/jobs">
+  <input name="prompt" placeholder="What do you want done?">
+  <button type="submit">Queue it</button>
+</form>
