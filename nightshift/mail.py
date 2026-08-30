@@ -39,6 +39,20 @@ He is fluent in English and he is not a native speaker, so keep the sentences
 short and the voice active. Answer with one line that says what the draft says."""
 
 
+# Measured on 2026-08-30: the connector is named `claude.ai Gmail`, so its
+# tools carry the prefix below. The same server also exposes send_message,
+# forward, reply, trash_message and trash_thread. So each call names its tools
+# one by one. A prefix pattern would hand the agent the power to send and to
+# destroy, and rule 2 of the spec forbids that.
+# ponytail: if the connector is renamed, these strings break and the run fails
+# on permissions. The test test_the_tool_names_use_the_real_server_prefix says
+# where to look.
+GMAIL = "mcp__claude_ai_Gmail__"
+READ_TOOLS = ",".join(GMAIL + name for name in
+                      ("search_threads", "get_thread", "get_message"))
+DRAFT_TOOLS = GMAIL + "create_draft"
+
+
 @dataclasses.dataclass(frozen=True)
 class Item:
     bucket: str
@@ -58,7 +72,7 @@ class TriageResult:
 
 def triage(runner_module, cwd) -> TriageResult:
     r = runner_module.run(PROMPT, cwd=cwd, schema=SCHEMA,
-                          allowed_tools="mcp__gmail")
+                          allowed_tools=READ_TOOLS)
     if not r.ok:
         return TriageResult([], r.cost_usd, r.error or "The run failed.")
     try:
@@ -84,4 +98,4 @@ def write_draft(runner_module, item: "Item", cwd):
     return runner_module.run(
         DRAFT_PROMPT.format(title=item.title, why=item.body,
                             url=item.source_url),
-        cwd=cwd, allowed_tools="mcp__gmail__create_draft")
+        cwd=cwd, allowed_tools=DRAFT_TOOLS)

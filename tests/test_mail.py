@@ -74,3 +74,35 @@ def test_the_draft_prompt_carries_the_message():
     prompt, _ = fake.calls[0]
     assert "Shannon: deck" in prompt
     assert "3 layouts" in prompt
+
+
+FORBIDDEN = ("send", "forward", "reply", "trash", "delete", "spam", "label")
+
+
+def test_no_call_may_reach_a_tool_that_sends_or_destroys():
+    """The Gmail server also exposes send_message, forward, reply and trash.
+
+    A prefix pattern such as "mcp__claude_ai_Gmail" would allow all of them.
+    So every call names its tools one by one.
+    """
+    fake = FakeRunner({"messages": []})
+    mail.triage(fake, cwd="/tmp")
+    mail.write_draft(fake, mail.Item("needs_you", "t", "w", "https://x/1"),
+                     cwd="/tmp")
+    assert len(fake.calls) == 2
+    for _, kw in fake.calls:
+        tools = kw["allowed_tools"].split(",")
+        assert tools, "a call with no tool list allows everything"
+        for tool in tools:
+            assert not any(bad in tool.lower() for bad in FORBIDDEN), tool
+
+
+def test_the_tool_names_use_the_real_server_prefix():
+    """Measured on 2026-08-30: the server is `claude.ai Gmail` and the tools
+    carry the prefix `mcp__claude_ai_Gmail__`. A wrong prefix matches nothing
+    and the run fails on permissions."""
+    fake = FakeRunner({"messages": []})
+    mail.triage(fake, cwd="/tmp")
+    _, kw = fake.calls[0]
+    for tool in kw["allowed_tools"].split(","):
+        assert tool.startswith("mcp__claude_ai_Gmail__"), tool
