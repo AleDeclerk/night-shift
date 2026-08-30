@@ -86,6 +86,26 @@ def test_opening_an_item_records_the_time(tmp_path):
                         ).fetchone()[0] is not None
 
 
+def test_a_job_that_needs_you_shows_its_question(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state, question)"
+                 " VALUES ('x','Prepare the sprint review','needs_you',"
+                 "'Which sprint number?')")
+    conn.commit()
+    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    assert "Prepare the sprint review" in body
+    assert "Which sprint number?" in body
+
+
+def test_a_queued_job_is_visible_on_the_page(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state)"
+                 " VALUES ('x','Prepare the sprint review','queued')")
+    conn.commit()
+    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    assert "Prepare the sprint review" in body
+
+
 def test_a_cycle_that_never_finished_is_visible(tmp_path):
     """A crash between the start and the end leaves `ok` NULL, with no error
     text. The page must not look like a quiet day."""

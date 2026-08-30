@@ -69,6 +69,23 @@ def test_an_item_that_needs_you_gets_a_draft(tmp_path):
     assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 2
 
 
+def test_the_cycle_runs_one_job_and_adds_its_cost(tmp_path, monkeypatch):
+    """The job queue had no caller. This proves the cycle now spends on it
+    and that the spend lands where the governor reads it."""
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(cost=0.5)
+
+    def fake_run_next(conn_arg, runner_module, workspace):
+        assert conn_arg is conn
+        assert runner_module is stub
+        return 0.4
+
+    monkeypatch.setattr(cycle.jobs, "run_next", fake_run_next)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path)
+    assert _last_run(conn)["cost_usd"] == 0.9  # 0.5 triage + 0.4 job
+
+
 def test_work_already_done_survives_an_item_that_explodes(tmp_path):
     """The inserts used to commit once, after the loop. One exception threw
     away every draft already written and every cost already spent."""

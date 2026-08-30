@@ -45,6 +45,12 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
                 "SELECT * FROM items WHERE bucket = ? ORDER BY id DESC LIMIT 50",
                 (name,)).fetchall()
 
+        def job_rows(*states):
+            marks = ",".join("?" * len(states))
+            return conn.execute(
+                f"SELECT * FROM jobs WHERE state IN ({marks}) ORDER BY id DESC",
+                states).fetchall()
+
         last = conn.execute(
             "SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
         good = conn.execute(
@@ -57,7 +63,10 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
             "no_action": bucket("no_action"),
             "error": _trouble(last),
             "last_good": _when(good["started_at"]) if good else "never",
-            "spent": round(spent, 2), "ceiling": ceiling_usd})
+            "spent": round(spent, 2), "ceiling": ceiling_usd,
+            "jobs_waiting": job_rows("needs_you", "failed"),
+            "jobs_queued": job_rows("queued", "running"),
+            "jobs_done": job_rows("done")})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):

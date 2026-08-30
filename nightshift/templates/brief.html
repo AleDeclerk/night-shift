@@ -35,16 +35,26 @@
   <div class="why">{{ error }}</div></div>
 {% endif %}
 
-<h2>Needs you ({{ needs_you|length }})</h2>
+<h2>Needs you ({{ needs_you|length + jobs_waiting|length }})</h2>
 {% for i in needs_you %}
   <div class="card"><strong>{{ i["title"] }}</strong>
     <div class="why">{{ i["body"] }}</div>
     <a href="/open/{{ i['id'] }}">source</a></div>
-{% else %}<p>Nothing needs you.</p>{% endfor %}
+{% endfor %}
+{% for j in jobs_waiting %}
+  <div class="card"><strong>{{ j["prompt"] }}</strong>
+    <div class="why">{{ j["question"] }}</div></div>
+{% endfor %}
+{% if not needs_you and not jobs_waiting %}<p>Nothing needs you.</p>{% endif %}
 
-<h2>Done ({{ done|length }})</h2>
+<h2>Done ({{ done|length + jobs_done|length }})</h2>
 {% for i in done %}<div class="card">{{ i["title"] }}</div>
-{% else %}<p>Nothing yet.</p>{% endfor %}
+{% endfor %}
+{% for j in jobs_done %}
+  <div class="card"><strong>{{ j["prompt"] }}</strong>
+    <div class="why">{{ j["answer"] }}</div></div>
+{% endfor %}
+{% if not done and not jobs_done %}<p>Nothing yet.</p>{% endif %}
 
 <details><summary>Checked, no action ({{ no_action|length }})</summary>
 {% for i in no_action %}<div class="card">{{ i["title"] }}
@@ -52,6 +62,7 @@
 </details>
 
 <h2>Give a job</h2>
+{% for j in jobs_queued %}<div class="why">{{ j["prompt"] }}</div>{% endfor %}
 <form method="post" action="/jobs">
   <input name="prompt" placeholder="What do you want done?">
   <button type="submit">Queue it</button>

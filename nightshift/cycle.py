@@ -2,7 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import quota
+from nightshift import jobs, quota
 
 
 def _start_run(conn, now, kind) -> int:
@@ -54,4 +54,12 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             _end_run(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400])
             return
+
+    # One job per cycle. Wrapped like the item loop above: a job that
+    # explodes must not lose the cost already spent on the mail triage.
+    try:
+        spent += jobs.run_next(conn, runner_module, workspace)
+    except Exception as exc:  # noqa: BLE001
+        _end_run(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400])
+        return
     _end_run(conn, run_id, True, cost=spent)
