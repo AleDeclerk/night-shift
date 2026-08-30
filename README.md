@@ -9,8 +9,8 @@ your coffee.
 
 The agent is Claude Code in headless mode. It runs against your subscription,
 not against API credits. This project does not build an agent. It builds the
-five boring parts around one: a queue, a runner, a workspace, a page, and a
-quota governor.
+boring parts around one: a queue, a runner, a workspace, a page, a
+scheduler, and a quota governor.
 
 ## Status
 
