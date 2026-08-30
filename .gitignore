@@ -1,0 +1,13 @@
+# Local state. It contains your data. It never goes to the repository.
+*.db
+*.db-journal
+.env
+.env.*
+workspaces/
+briefs/
+runs/
+logs/
+__pycache__/
+.venv/
+venv/
+.DS_Store
