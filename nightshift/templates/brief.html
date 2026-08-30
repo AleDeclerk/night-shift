@@ -10,6 +10,7 @@
          margin-bottom: .7rem; }
  .quota { float: right; font: 12px ui-sans-serif, system-ui; color: #6b645c; }
  .why { color: #6b645c; }
+ a { color: #9a5b2a; }
  .failed { border-color: #b3492e; }
  details summary { cursor: pointer; color: #6b645c;
                    font: 600 11px/1 ui-sans-serif, system-ui;
@@ -19,11 +20,15 @@
          border-radius: 6px; font: inherit; }
  @media (prefers-color-scheme: dark) {
    body { background: #16130f; color: #e9e3da; }
-   .card, input { border-color: #2e2921; }
+   .card { border-color: #2e2921; }
+   input { border-color: #2e2921; background: #1d1914; color: #e9e3da; }
+   button { background: #2e2921; color: #e9e3da; border: 1px solid #3d362c;
+            border-radius: 6px; padding: .45rem .9rem; }
    .why, .quota, details summary { color: #9c9389; }
+   a { color: #d98f52; }
  }
 </style>
-<span class="quota">weekly spend: {{ spent }} of {{ ceiling }} USD</span>
+<span class="quota">last good cycle: {{ last_good }}<br>weekly spend: {{ spent }} of {{ ceiling }} USD</span>
 <h1>Brief</h1>
 {% if error %}
 <div class="card failed"><strong>The last cycle failed.</strong>
@@ -34,7 +39,7 @@
 {% for i in needs_you %}
   <div class="card"><strong>{{ i["title"] }}</strong>
     <div class="why">{{ i["body"] }}</div>
-    <a href="{{ i['source_url'] }}">source</a></div>
+    <a href="/open/{{ i['id'] }}">source</a></div>
 {% else %}<p>Nothing needs you.</p>{% endfor %}
 
 <h2>Done ({{ done|length }})</h2>
