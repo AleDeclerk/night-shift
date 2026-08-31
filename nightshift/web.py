@@ -92,7 +92,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "jobs_waiting": job_rows("needs_you", "failed"),
             "jobs_queued": job_rows("queued", "running"),
             "jobs_done": job_rows("done"),
-            "engines": backends.check_all(),
+            "engines": engines_of(),
             "probes": backends.last_probes(conn),
             "job_engine": engines.get_engine(conn),
             "job_engines": engines.JOB_ENGINES})

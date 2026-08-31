@@ -248,3 +248,21 @@ def test_the_page_marks_the_chosen_engine(tmp_path):
     body = TestClient(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert 'value="ollama" selected' in body or "selected" in body
+
+
+def test_the_injected_engines_are_the_ones_used(tmp_path):
+    """`engine_source` was accepted and then ignored, so the page always ran
+    the real CLIs. The suite only looked fast because another test warmed the
+    module cache first, by alphabetical luck."""
+    conn = db.connect(tmp_path / "s.db")
+    called = []
+
+    def marker():
+        called.append(True)
+        return [backends.Engine("claude", "MOTOR-INYECTADO", "x", True, True,
+                                True, True, True, False)]
+
+    body = TestClient(web.make_app(conn, engine_source=marker,
+                                   ceiling_usd=20.0)).get("/").text
+    assert called, "the page ignored the injected source"
+    assert "MOTOR-INYECTADO" in body
