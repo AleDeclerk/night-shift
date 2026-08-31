@@ -1,0 +1,7 @@
+#!/bin/sh
+# A fake `cursor-agent login`. It prints the same wrapped link, then it waits.
+printf ' Starting login process...\n\n'
+printf ' Open a browser and navigate to this link: https://cursor.com/loginDeepControl?\n'
+printf ' challenge=TESTCHALLENGE0000&uuid=00000000-0000-0000-0000-000000000000&\n'
+printf ' mode=login&redirectTarget=cli\n'
+sleep 120
