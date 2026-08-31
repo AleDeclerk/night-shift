@@ -321,6 +321,23 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
 
 /* la franja de abajo queda solo para dar ordenes */
 .a-order form.order{flex:1 1 100%}
+
+/* ---- los cuatro motores, de un vistazo, en la barra ---- */
+.cell--engines{min-width:15rem}
+.strip{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.25rem}
+.chip{
+  display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;
+  font-family:"Oswald",sans-serif;font-weight:500;font-size:.58rem;
+  letter-spacing:.12em;text-transform:uppercase;
+  background:var(--paper);color:var(--ink);border:2px solid var(--ink);
+  padding:.2rem .45rem;
+}
+.chip:hover{background:var(--ink);color:var(--paper)}
+.chip:hover .dot{background:var(--paper)}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ink)}
+.chip--off{border-color:var(--stamp);color:var(--stamp);opacity:.85}
+.chip--off .dot{background:var(--stamp)}
+.chip--off:hover{background:var(--stamp);border-color:var(--stamp)}
 </style>
 </head>
 <body>
@@ -351,10 +368,18 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
     <div class="gauge"><span style="width:{{ (spent / ceiling * 100) if ceiling else 0 }}%"></span></div>
     <div class="v small">equivalente en USD, no es un cobro</div>
   </div>
-  <div class="cell">
-    <div class="k">Motor del correo</div>
-    <div class="v">CLAUDE</div>
-    <div class="v small">único con conector</div>
+  <div class="cell cell--engines">
+    <div class="k">Motores</div>
+    <div class="strip">
+      {% for e in engines %}
+      <button type="button" class="chip{% if not e.signed_in %} chip--off{% endif %}"
+              data-open-room="1"
+              title="{{ e.label }}: {% if e.signed_in %}con sesión{% else %}sin sesión{% endif %}{% if e.sees_mail %} · conector de Gmail{% endif %}">
+        <span class="dot"></span>{{ e.label }}
+      </button>
+      {% endfor %}
+    </div>
+    <div class="v small">baja: CLAUDE · redacta: {{ mail_engine|upper }} · encargos: {{ job_engine|upper }}</div>
   </div>
 </div>
 </div>
@@ -527,6 +552,9 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
   var open = document.getElementById("open-room");
   var close = document.getElementById("close-room");
   if (open && room) { open.addEventListener("click", function () { room.showModal(); }); }
+  document.querySelectorAll("[data-open-room]").forEach(function (chip) {
+    chip.addEventListener("click", function () { if (room) { room.showModal(); } });
+  });
   if (close && room) { close.addEventListener("click", function () { room.close(); }); }
 })();
 

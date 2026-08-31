@@ -317,3 +317,23 @@ def test_the_panel_tells_the_connector_from_the_ability_to_work(tmp_path):
                                    ceiling_usd=20.0)).get("/").text
     assert "Conector de Gmail" in body
     assert "Trabaja el correo" in body
+
+
+def test_the_bar_shows_every_engine_at_a_glance(tmp_path):
+    """One cell used to name only the mail engine. The bar now says which
+    engines exist and which one is down, without opening anything."""
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    bar = body.split('class="bar"')[1].split('class="panel')[0]
+    for label in ("Claude", "Gemini", "Cursor", "Ollama"):
+        assert label in bar, label
+    assert "chip--off" in bar     # Cursor has no session in the fixture
+
+
+def test_the_bar_says_who_does_what(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "redacta:" in body
+    assert "encargos:" in body
