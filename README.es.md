@@ -71,6 +71,21 @@ locales baratos y responde `SE DESCONOCE` cuando no puede saber. Cursor tiene
 un flujo de ingreso que no abre ningún navegador por su cuenta, y el enlace de
 ingreso nunca entra a la base de datos ni a un log.
 
+## El motor local y el correo
+
+El conector de Google contesta sólo a clientes que él registró, así que el
+modelo local nunca va a alcanzar Gmail, y ninguna configuración cambia eso. No
+hace falta. El harness de DeepSeek le da una shell al modelo local, así que
+Claude baja el correo y lo guarda, y el modelo local lee de ahí:
+
+    ./scripts/ns-mail list --bucket needs_you
+    ./scripts/ns-mail show 1
+
+Medido el 2026-08-31: el modelo local leyó un mensaje real y lo resumió en 62
+segundos, sin gastar cuota de suscripción y sin que el texto saliera de la
+máquina. Las mismas funciones corren además como un server MCP de sólo lectura
+en `scripts/ns-mail-mcp.py`, para cualquier cliente MCP que aparezca después.
+
 ## Cómo correrlo
 
 Instalar la corrida diaria de las 06:30, con un techo de 20 USD de gasto

@@ -67,6 +67,21 @@ and the page says why. The panel measures with cheap local commands, and it
 answers `UNKNOWN` when it cannot know. Cursor gets a sign-in flow that opens no
 browser on its own, and the sign-in link never enters the database or a log.
 
+## The local engine and the mail
+
+Google's connector answers only clients that it registered, so the local model
+can never reach Gmail, and no amount of configuration changes that. It does not
+need to. The DeepSeek Harness gives the local model a shell, so Claude fetches
+the mail and stores it, and the local model reads the store:
+
+    ./scripts/ns-mail list --bucket needs_you
+    ./scripts/ns-mail show 1
+
+Measured on 2026-08-31: the local model read a real message and summarised it
+in 62 seconds, with no subscription quota and with the text never leaving the
+machine. The same functions also run as a read-only MCP server at
+`scripts/ns-mail-mcp.py`, for any MCP client that arrives later.
+
 ## Run it
 
 Install the daily run at 06:30, with a ceiling of 20 USD of equivalent spend
