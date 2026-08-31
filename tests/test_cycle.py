@@ -13,6 +13,7 @@ class Stub:
     def triage(self, *a, **kw):
         from nightshift.mail import TriageResult
         self.ran = True
+        self.since = kw.get("since")
         return TriageResult(self.items, self.cost, self.error)
 
     def write_draft(self, *a, **kw):
@@ -176,3 +177,23 @@ def test_a_message_already_seen_gets_no_second_draft(tmp_path):
     assert first.drafted == 1
     assert second.drafted == 0  # the same message, no second draft
     assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 1
+
+
+def test_the_cycle_asks_only_for_mail_since_the_last_good_run(tmp_path):
+    """Every cycle used to pay to classify the same day of mail again."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES ('2026-08-26T01:00:00','mail',1,0.4)")
+    conn.commit()
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    assert stub.since == "2026-08-26T01:00:00"
+
+
+def test_the_first_cycle_of_all_has_no_since(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    assert stub.since is None

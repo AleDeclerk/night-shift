@@ -156,3 +156,19 @@ def test_a_draft_call_that_gives_no_json_is_a_failure():
                               cwd="/tmp")
     assert result.ok is False
     assert result.cost_usd == 0.5
+
+
+def test_the_triage_asks_only_for_what_arrived_since_a_given_time():
+    """A cycle with no news cost 2.39 USD on 2026-08-30, because the triage
+    re-read a fixed 24 hour window and paid to classify the same mail again."""
+    fake = FakeRunner({"messages": []})
+    mail.triage(fake, cwd="/tmp", since="2026-08-30T21:06:32")
+    prompt, _ = fake.calls[0]
+    assert "2026-08-30T21:06:32" in prompt
+
+
+def test_the_triage_falls_back_to_a_day_when_it_never_ran():
+    fake = FakeRunner({"messages": []})
+    mail.triage(fake, cwd="/tmp")
+    prompt, _ = fake.calls[0]
+    assert "24 hours" in prompt

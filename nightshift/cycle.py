@@ -21,6 +21,13 @@ def _end_run(conn, run_id, ok, cost=0.0, error=None) -> None:
 
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
              now: dt.datetime, ceiling_usd: float, workspace) -> None:
+    # The window starts where the last good cycle started, so the system never
+    # pays twice to classify the same mail, and a gap of days widens it alone.
+    previous = conn.execute(
+        "SELECT started_at FROM runs WHERE ok = 1 ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    since = previous["started_at"] if previous else None
+
     run_id = _start_run(conn, now, "mail")
 
     decision = quota.may_run(conn, now=now, ceiling_usd=ceiling_usd)
@@ -30,7 +37,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
 
     # There is no separate health check. It costs as much as the work that it
     # would protect, so the triage itself reports an authentication failure.
-    result = mail_module.triage(runner_module, cwd=workspace)
+    result = mail_module.triage(runner_module, cwd=workspace, since=since)
     spent = result.cost_usd
     if result.error:
         _end_run(conn, run_id, False, cost=spent, error=result.error[:400])

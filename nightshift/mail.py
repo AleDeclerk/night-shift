@@ -18,7 +18,7 @@ SCHEMA = {
     "required": ["messages"],
 }
 
-PROMPT = """Read the mail that arrived in the last 24 hours.
+PROMPT = """Read the mail that arrived {window}.
 
 For each message, decide one thing: does it need an action from Alejandro?
 Give a short reason for each decision. Give the Gmail link of each message.
@@ -109,8 +109,15 @@ class TriageResult:
     error: str | None = None
 
 
-def triage(runner_module, cwd) -> TriageResult:
-    r = runner_module.run(PROMPT, cwd=cwd, schema=SCHEMA,
+def triage(runner_module, cwd, since: str | None = None) -> TriageResult:
+    """`since` is the start of the last good cycle.
+
+    A fixed 24 hour window made every cycle pay to classify the same mail
+    again: a run with no news cost 2.39 USD on 2026-08-30. When the system was
+    down for days, `since` also widens the window on its own.
+    """
+    window = f"after {since}" if since else "in the last 24 hours"
+    r = runner_module.run(PROMPT.format(window=window), cwd=cwd, schema=SCHEMA,
                           allowed_tools=READ_TOOLS)
     if not r.ok:
         return TriageResult([], r.cost_usd, r.error or "The run failed.")
