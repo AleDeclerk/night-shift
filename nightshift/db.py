@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """CREATE TABLE IF NOT EXISTS never adds a column to a table that
+    already exists. Measured on 2026-08-31: the live state.db under
+    ~/.night-shift predates `excerpt`, and the next scheduled cycle would
+    crash on the first insert without this.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(items)")}
+    if "excerpt" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN excerpt TEXT")
+
+
 def connect(path: pathlib.Path) -> sqlite3.Connection:
     """Open the database and make the schema if it is absent."""
     # check_same_thread=False: FastAPI runs sync routes in a thread pool.
@@ -55,5 +66,6 @@ def connect(path: pathlib.Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
