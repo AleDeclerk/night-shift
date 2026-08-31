@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 ```
 
-The state of an item is stored as well, in a column, because a page that has to
-replay every event to draw a list is slow and hard to read. But the events are
+The state of an item is stored as well, in a column. A page that replays every
+event to draw one list is slow, and it is hard to read. But the events are
 the record: a state that disagrees with them is a bug, and a test proves they
 agree.
 
@@ -83,16 +83,15 @@ events are what it reads. The wikis are a separate project with their own spec.
 ## 7. Acceptance criteria
 
 - Given an item in `Pendiente`, when the user presses `Listo`, then the item
-  moves to `Ya revisado`, and an `item_closed` event holds the verb and the
-  hour.
+  moves to `Ya revisado`. An `item_closed` event holds the verb and the hour.
 - Given an item, when the user presses `No era nada`, then the event holds the
   reason `false_alarm`, so a later count can measure the triage.
 - Given a snoozed item, when the next cycle runs, then the item is in
-  `Pendiente` again, and the mail that raised it gets no second draft.
+  `Pendiente` again. The mail that raised it gets no second draft.
 - Given a closed item, when a cycle runs, then it stays closed and the same
   message does not come back.
 - Given `Rehacer`, when the user presses it, then a new draft is written with
-  the engine that the machine room names, and the item stays in `Pendiente`.
+  the engine that the machine room names. The item stays in `Pendiente`.
 - Given any verb, when the page answers, then the event is already stored: a
   button never reports work that did not happen.
 - Given the events table, when the state of an item is read from it, then it
