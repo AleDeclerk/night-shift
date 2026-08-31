@@ -4,6 +4,8 @@ import json
 import pathlib
 import sqlite3
 
+from nightshift import life
+
 from nightshift import engines
 
 SCHEMA = {
@@ -43,7 +45,11 @@ def add(conn: sqlite3.Connection, prompt: str) -> int:
         "INSERT INTO jobs (created_at, prompt, state) VALUES (?,?,'queued')",
         (dt.datetime.now().isoformat(), prompt))
     conn.commit()
-    return cur.lastrowid
+    job_id = cur.lastrowid
+    # The weekly board reads events, never this table. A state change with no
+    # event is work that the board reports as zero.
+    life.record(conn, "job_queued", job_id=job_id, detail=prompt[:200])
+    return job_id
 
 
 def get(conn: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
@@ -66,6 +72,7 @@ def finish(conn: sqlite3.Connection, job_id: int, result_path: str) -> None:
     conn.execute("UPDATE jobs SET state='done', result_path=? WHERE id=?",
                  (result_path, job_id))
     conn.commit()
+    life.record(conn, "job_done", job_id=job_id, detail=result_path)
 
 
 def fail(conn: sqlite3.Connection, job_id: int, error: str) -> None:
@@ -74,6 +81,7 @@ def fail(conn: sqlite3.Connection, job_id: int, error: str) -> None:
     conn.execute("UPDATE jobs SET state='failed', question=? WHERE id=?",
                  (error, job_id))
     conn.commit()
+    life.record(conn, "job_failed", job_id=job_id, detail=str(error)[:200])
 
 
 def answer(conn: sqlite3.Connection, job_id: int, text: str) -> None:

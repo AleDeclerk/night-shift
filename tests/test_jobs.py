@@ -155,3 +155,27 @@ def test_set_engine_gemini_is_refused(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     with pytest.raises(ValueError):
         engines.set_engine(conn, "gemini")
+
+
+def test_a_finished_job_leaves_an_event(tmp_path):
+    """The weekly board counts `job_done`. Without the event it shows zero
+    for ever, and a zero reads as "nothing happened"."""
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "Prepare the sprint review")
+    jobs.finish(conn, job_id, "/tmp/job-1")
+    kinds = [r[0] for r in conn.execute("SELECT kind FROM events")]
+    assert "job_done" in kinds
+
+
+def test_a_failed_job_leaves_an_event(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    jobs.fail(conn, job_id, "401 expired")
+    rows = conn.execute("SELECT kind, detail FROM events").fetchall()
+    assert any(r[0] == "job_failed" for r in rows)
+
+
+def test_a_queued_job_leaves_an_event(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "one")
+    assert "job_queued" in [r[0] for r in conn.execute("SELECT kind FROM events")]

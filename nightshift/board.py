@@ -82,9 +82,13 @@ def _median_hours_to_close(conn: sqlite3.Connection, since: str) -> float | None
 def _scores(conn: sqlite3.Connection, since: str) -> dict:
     """How many ratings the week holds, and their average. Fewer than three
     is not enough to trust: one glowing or one harsh score would swing it."""
+    # One score for each item, the last one given. A second rating replaces
+    # the first, so counting both would weigh one item twice.
     scores = [int(r["detail"]) for r in conn.execute(
-        "SELECT detail FROM events WHERE kind='item_rated' AND at >= ?",
-        (since,))]
+        "SELECT detail FROM events e WHERE kind='item_rated' AND at >= ?"
+        " AND id = (SELECT max(id) FROM events WHERE kind='item_rated'"
+        "           AND item_id = e.item_id AND at >= ?)",
+        (since, since))]
     average = (statistics.mean(scores)
               if len(scores) >= MIN_RATED_FOR_AVERAGE else None)
     return {"count": len(scores), "average": average}

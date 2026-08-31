@@ -147,3 +147,20 @@ def test_a_seven_day_window_ignores_an_event_from_thirty_days_ago(tmp_path):
     got = board.week(conn, now=NOW, days=7)
     assert got["reviewed"] == 1
     assert got["raised"] == 1
+
+
+def test_rating_the_same_item_twice_counts_once(tmp_path):
+    """A second rating replaces the first, so counting both would weigh one
+    item twice and drag the average."""
+    import datetime as dt
+    from nightshift import board, db, life
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok) VALUES ('x','mail',1)")
+    conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
+                 " source_url) VALUES (1,'x','needs_you','t','https://x/1')")
+    conn.commit()
+    life.rate(conn, 1, 3)
+    life.rate(conn, 1, 9)      # the user changed their mind
+    scores = board.week(conn, now=dt.datetime.now())["scores"]
+    assert scores["count"] == 1, scores
+    assert scores["average"] is None or scores["average"] == 9
