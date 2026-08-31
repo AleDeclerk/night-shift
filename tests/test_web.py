@@ -115,3 +115,28 @@ def test_a_cycle_that_never_finished_is_visible(tmp_path):
     conn.commit()
     body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
+
+
+def test_a_cycle_that_is_running_now_is_not_called_dead(tmp_path):
+    """A cycle takes up to three minutes. Opening the page at 06:31, while the
+    06:30 run works, must not show the message for a dead run."""
+    import datetime as dt
+    conn = db.connect(tmp_path / "s.db")
+    just_now = (dt.datetime.now() - dt.timedelta(minutes=2)).isoformat()
+    conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
+                 (just_now,))
+    conn.commit()
+    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    assert "did not finish" not in body.lower()
+    assert "running" in body.lower()
+
+
+def test_a_cycle_that_started_long_ago_and_never_ended_is_dead(tmp_path):
+    import datetime as dt
+    conn = db.connect(tmp_path / "s.db")
+    old = (dt.datetime.now() - dt.timedelta(hours=3)).isoformat()
+    conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
+                 (old,))
+    conn.commit()
+    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    assert "did not finish" in body.lower()

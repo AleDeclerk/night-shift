@@ -14,12 +14,25 @@ TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
 
 
+# A measured cycle takes one to three minutes. Past this, a run that never
+# ended is dead, not busy.
+STALE_MINUTES = 15
+
+
 def _trouble(last) -> str | None:
     """A run that dies between its start and its end leaves `ok` NULL and no
     error text. Without this branch that run reads as a quiet day."""
     if last is None:
         return None
     if last["ok"] is None:
+        try:
+            started = dt.datetime.fromisoformat(last["started_at"])
+        except ValueError:
+            started = None
+        if started and dt.datetime.now() - started < dt.timedelta(
+                minutes=STALE_MINUTES):
+            return "A cycle is running now. It started at %s." % _when(
+                last["started_at"])
         return ("The last cycle started at %s and it did not finish. Look at "
                 "/tmp/nightshift.err.log." % last["started_at"])
     if not last["ok"]:
