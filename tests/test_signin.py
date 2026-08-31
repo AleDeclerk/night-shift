@@ -66,3 +66,30 @@ def test_the_link_is_never_part_of_the_public_state():
     assert link not in repr(flow.status())
     assert "challenge" not in repr(flow.status())
     flow.cancel()
+
+
+def test_the_parser_does_not_depend_on_the_name_of_a_parameter():
+    """Tying completeness to `redirectTarget` breaks in silence the day Cursor
+    renames it: the flow waits three minutes and says nothing useful."""
+    other = (" Open a browser and navigate to this link: https://cursor.com/lo\n"
+             " ginDeepControl?challenge=ABC&uuid=123&mode=login&someNewName=cli\n")
+    link = signin.extract_link(other)
+    assert link == ("https://cursor.com/loginDeepControl?"
+                    "challenge=ABC&uuid=123&mode=login&someNewName=cli")
+
+
+def test_a_half_written_buffer_is_not_offered_while_output_still_arrives():
+    """The reader appends line by line, so the buffer holds a third of the
+    link for a moment. Handing that out gives the user a dead link."""
+    flow = signin.Flow(binary=str(FAKE))
+    flow._buffer = (" Open a browser and navigate to this link: "
+                    "https://cursor.com/loginDeepControl?\n")
+    flow._last_data = signin.time.monotonic()   # output is still flowing
+    assert flow.candidate_link() is None
+
+
+def test_the_link_is_offered_once_the_output_goes_quiet():
+    flow = signin.Flow(binary=str(FAKE))
+    flow._buffer = REAL_OUTPUT
+    flow._last_data = signin.time.monotonic() - 5   # nothing new for a while
+    assert flow.candidate_link().endswith("redirectTarget=cli")

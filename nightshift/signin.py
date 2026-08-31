@@ -13,6 +13,11 @@ import time
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DEADLINE_SECONDS = 180
 
+# The reader appends one line at a time, so the buffer holds a third of the
+# link for a moment. The link counts as whole once no new output arrives for
+# this long. This asks nothing about the names that Cursor chose.
+QUIET_SECONDS = 0.4
+
 
 def extract_link(raw: str) -> str | None:
     """Read the sign-in link out of the CLI output.
@@ -21,17 +26,15 @@ def extract_link(raw: str) -> str | None:
     A plain search for a URL returns `https://cursor.com/loginDeepControl?`,
     which opens nothing. So the escapes go first, then the wrap.
 
-    Only return a link if it looks complete (contains redirectTarget).
+    This function parses. It does not decide whether the output finished:
+    `Flow.candidate_link` owns that, and it decides by quiet time. Tying
+    completeness to a parameter name such as `redirectTarget` would break in
+    silence the day Cursor renames it.
     """
     clean = ANSI.sub("", raw)
     joined = re.sub(r"\n\s*", "", clean)
     found = re.search(r"https://\S+", joined)
-    if found:
-        url = found.group(0)
-        # Only return if the URL looks complete (has the expected parameters)
-        if "redirectTarget" in url:
-            return url
-    return None
+    return found.group(0) if found else None
 
 
 class Flow:
@@ -44,6 +47,7 @@ class Flow:
         self.env_used = {}
         self._link = None
         self._buffer = ""
+        self._last_data = 0.0
         self._started_at = 0.0
         self._lock = threading.Lock()
 
@@ -60,19 +64,33 @@ class Flow:
         for line in self.process.stdout:
             with self._lock:
                 self._buffer += line
-                if self._link is None:
-                    self._link = extract_link(self._buffer)
+                self._last_data = time.monotonic()
         with self._lock:
+            self._last_data = time.monotonic() - QUIET_SECONDS  # the end is quiet
             if self.state == "waiting":
                 self.state = "done" if self.process.poll() == 0 else "expired"
+
+    def candidate_link(self) -> str | None:
+        """The link, but only once the output stopped arriving.
+
+        The reader appends line by line, so for a moment the buffer holds only
+        the first third of the link. Handing that out gives a dead link.
+        """
+        if not self._last_data:
+            return None
+        if time.monotonic() - self._last_data < QUIET_SECONDS:
+            return None
+        return extract_link(self._buffer)
 
     def wait_for_link(self, timeout: float = 20) -> str | None:
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             with self._lock:
-                if self._link:
-                    return self._link
-            time.sleep(0.2)
+                found = self.candidate_link()
+                if found:
+                    self._link = found
+                    return found
+            time.sleep(0.1)
         return None
 
     def link(self) -> str | None:
