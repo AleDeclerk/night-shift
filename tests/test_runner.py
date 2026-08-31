@@ -63,3 +63,18 @@ def test_a_killed_run_still_charges_the_governor(monkeypatch, tmp_path):
     r = runner.run("x", binary=str(FAKE), cwd=tmp_path, timeout=0)
     assert r.ok is False
     assert r.cost_usd > 0
+
+
+def test_a_missing_binary_is_a_result_and_not_a_crash(tmp_path):
+    """launchd runs with a small PATH. On 2026-08-30 the scheduled cycle died
+    with FileNotFoundError: 'claude', which killed the process and left the run
+    half written instead of recording the cause."""
+    r = runner.run("x", binary="/nowhere/claude", cwd=tmp_path)
+    assert r.ok is False
+    assert "/nowhere/claude" in r.error
+
+
+def test_the_default_binary_is_an_absolute_path():
+    """A bare name only resolves when PATH holds it, and the PATH of launchd
+    does not."""
+    assert runner.default_binary().startswith("/")
