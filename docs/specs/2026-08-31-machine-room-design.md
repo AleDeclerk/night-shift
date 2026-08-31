@@ -6,9 +6,8 @@
 
 The system runs on one engine today: Claude Code against a Max subscription.
 The user also holds a Cursor subscription, a Google account for the Gemini CLI,
-and six local models under Ollama. This phase gives the page a machine room
-that shows the true state of each engine, and it adds the sign-in flow for the
-one engine that has no session.
+and six local models under Ollama. This phase gives the page a machine room. The room shows the true state of
+each engine, and it adds the sign-in flow for the one engine with no session.
 
 One rule stands above the rest: **subscriptions only, never an API key.** An
 API key moves the cost from a flat monthly price to a metered bill, which is
@@ -38,9 +37,10 @@ itself. So the panel separates two kinds of check, and it never confuses them.
 ## 3. Two kinds of check, never confused
 
 **The cheap check** runs on every page load. It spends nothing and it takes
-about a second: does the binary exist, what does `cursor-agent status` answer,
-does `~/.gemini/settings.json` name an auth type, what does `ollama list`
-return, does `claude mcp list` name a Gmail server.
+about a second. It asks five small questions: does the binary exist, what does
+`cursor-agent status` answer, does `~/.gemini/settings.json` name an auth type,
+what does `ollama list` return, and does `claude mcp list` name a Gmail
+server.
 
 **The real probe** runs only when the user asks for it, with a button that
 names the price first. It sends one small prompt to the engine and it records
@@ -48,8 +48,8 @@ what came back.
 
 The page shows both, and it labels them apart. A cheap check says what the
 machine claims. A probe says what the machine did. The panel shows the date of
-the last real probe next to each engine, because a claim that was true last
-week is not evidence today.
+the last real probe next to each engine. A claim that was true last week is not
+evidence today.
 
 ## 4. The sign-in flow
 
@@ -108,7 +108,7 @@ engine, with a lamp and a lever.
 - Given an engine with no real probe yet, when the page loads, then that engine
   says that no probe ran, instead of claiming a capability.
 - Given the user asks for a real probe, when it finishes, then the page records
-  the date, the answer and the cost, and the weekly counter grows by that cost.
+  the date, the answer and the cost. The weekly counter grows by that cost.
 - Given Cursor has no session, when the user pulls its lever, then the page
   shows the full sign-in link, with its challenge intact.
 - Given the sign-in link, when it is written anywhere, then it appears in no
