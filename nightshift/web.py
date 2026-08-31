@@ -95,7 +95,9 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "engines": engines_of(),
             "probes": backends.last_probes(conn),
             "job_engine": engines.get_engine(conn),
-            "job_engines": engines.JOB_ENGINES})
+            "job_engines": engines.JOB_ENGINES,
+            "mail_engine": engines.get_mail_engine(conn),
+            "mail_engines": engines.MAIL_ENGINES})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
@@ -152,6 +154,14 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
     def choose_engine(name: str = Form(...)):
         try:
             engines.set_engine(conn, name)
+        except ValueError:
+            pass          # an unknown name changes nothing
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/machines/mail-engine")
+    def choose_mail_engine(name: str = Form(...)):
+        try:
+            engines.set_mail_engine(conn, name)
         except ValueError:
             pass          # an unknown name changes nothing
         return RedirectResponse("/", status_code=303)

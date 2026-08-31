@@ -21,6 +21,17 @@ class Stub:
         self.drafted += 1
         return DraftResult(0.8, True, "I asked for the three layouts.")
 
+    def compose(self, *a, **kw):
+        from nightshift.engines import EngineRun
+        self.composed = getattr(self, "composed", 0) + 1
+        return EngineRun(True, text="Sure, Friday works for me.",
+                         cost_usd=0.1)
+
+    def save_draft(self, *a, **kw):
+        from nightshift.mail import DraftResult
+        self.saved = getattr(self, "saved", 0) + 1
+        return DraftResult(0.2, True, "Saved the reply Ollama wrote.")
+
 
 def _last_run(conn):
     return conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
@@ -212,3 +223,59 @@ def test_the_first_cycle_of_all_has_no_since(tmp_path):
     cycle.run_once(conn, runner_module=stub, mail_module=stub,
                    now=NOW, ceiling_usd=45.0, workspace=tmp_path)
     assert stub.since is None
+
+
+# --- which engine composes the reply ----------------------------------
+
+def test_claude_as_mail_engine_writes_and_never_composes(tmp_path):
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(items=[Item("needs_you", "Shannon: deck", "3 layouts.",
+                            "https://x/1")])
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path,
+                   mail_engine="claude")
+    assert stub.drafted == 1
+    assert getattr(stub, "composed", 0) == 0
+    assert getattr(stub, "saved", 0) == 0
+
+
+def test_ollama_as_mail_engine_composes_then_saves_and_sums_the_cost(
+        tmp_path):
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(items=[Item("needs_you", "Shannon: deck", "3 layouts.",
+                            "https://x/1")], cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path,
+                   mail_engine="ollama")
+    assert stub.drafted == 0
+    assert stub.composed == 1
+    assert stub.saved == 1
+    # 0.5 triage + 0.1 compose + 0.2 save
+    assert _last_run(conn)["cost_usd"] == 0.8
+
+
+def test_a_failed_compose_skips_save_draft_and_the_item_says_so(tmp_path):
+    from nightshift.engines import EngineRun
+    from nightshift.mail import Item
+
+    class ComposeFails(Stub):
+        def compose(self, *a, **kw):
+            self.composed = getattr(self, "composed", 0) + 1
+            return EngineRun(False, error="dsh is not installed", cost_usd=0.1)
+
+        def save_draft(self, *a, **kw):
+            raise AssertionError("save_draft must not run after a failed"
+                                 " compose")
+
+    conn = db.connect(tmp_path / "s.db")
+    stub = ComposeFails(items=[Item("needs_you", "Shannon: deck", "3 layouts.",
+                                    "https://x/1")], cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path,
+                   mail_engine="ollama")
+    assert stub.composed == 1
+    body = conn.execute("SELECT body FROM items").fetchone()[0]
+    assert "NO DRAFT" in body
+    assert "dsh is not installed" in body

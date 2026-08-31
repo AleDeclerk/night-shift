@@ -19,8 +19,30 @@ def _end_run(conn, run_id, ok, cost=0.0, error=None) -> None:
     conn.commit()
 
 
+def _reply_cost_and_trace(mail_module, runner_module, item, mail_engine,
+                          workspace):
+    """Claude composes and saves in one call: it is the only engine that
+    reaches Gmail. Any other engine only writes the text, and Claude still
+    has to save it, so a failed compose never reaches save_draft.
+
+    Returns (cost_usd, ok, note), the same trio that a plain `write_draft`
+    call hands back.
+    """
+    if mail_engine == "claude":
+        draft = mail_module.write_draft(runner_module, item, cwd=workspace)
+        return draft.cost_usd, draft.ok, draft.note
+    composed = mail_module.compose(item, engine=mail_engine, cwd=workspace)
+    if not composed.ok:
+        return (composed.cost_usd, False,
+                f"The compose call failed: {composed.error}")
+    draft = mail_module.save_draft(runner_module, item, composed.text,
+                                   cwd=workspace)
+    return composed.cost_usd + draft.cost_usd, draft.ok, draft.note
+
+
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
-             now: dt.datetime, ceiling_usd: float, workspace) -> None:
+             now: dt.datetime, ceiling_usd: float, workspace,
+             mail_engine: str = "claude") -> None:
     # The window starts where the last good cycle started, so the system never
     # pays twice to classify the same mail, and a gap of days widens it alone.
     previous = conn.execute(
@@ -63,13 +85,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                 if decision.spent_usd + spent >= ceiling_usd:
                     stopped_by_budget += 1
                 else:
-                    draft = mail_module.write_draft(runner_module, item,
-                                                    cwd=workspace)
-                    spent += draft.cost_usd
+                    cost, ok, note = _reply_cost_and_trace(
+                        mail_module, runner_module, item, mail_engine,
+                        workspace)
+                    spent += cost
                     # The trace of the draft rides with the item. Without it
                     # an empty draft looks the same as a written one.
-                    mark = "Draft: " if draft.ok else "NO DRAFT. "
-                    body = f"{item.body}\n\n{mark}{draft.note}"
+                    mark = "Draft: " if ok else "NO DRAFT. "
+                    body = f"{item.body}\n\n{mark}{note}"
             conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
                 " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",

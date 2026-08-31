@@ -435,6 +435,17 @@ body{padding:0;overflow:hidden}
   </form>
   <p class="note">El correo se queda en Claude: es el único motor con conector. El
   motor local es gratis y lento.</p>
+  <form method="post" action="/machines/mail-engine">
+    <label for="mail-engine">Motor que redacta</label>
+    <select id="mail-engine" name="name">
+      {% for name in mail_engines %}
+      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
+  conector. Otro motor sólo escribe el texto de la respuesta.</p>
 </div>
   </div>
   <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>

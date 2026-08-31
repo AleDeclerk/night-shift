@@ -262,6 +262,34 @@ def test_the_page_marks_the_chosen_engine(tmp_path):
     assert 'value="ollama" selected' in body or "selected" in body
 
 
+def test_choosing_a_mail_engine_is_remembered(tmp_path):
+    from nightshift import engines
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post("/machines/mail-engine", data={"name": "ollama"},
+                follow_redirects=False)
+    assert engines.get_mail_engine(conn) == "ollama"
+
+
+def test_an_unknown_mail_engine_changes_nothing(tmp_path):
+    from nightshift import engines
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post("/machines/mail-engine", data={"name": "nothing"},
+                follow_redirects=False)
+    assert engines.get_mail_engine(conn) == "claude"
+
+
+def test_the_page_shows_the_mail_engine_form(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert 'action="/machines/mail-engine"' in body
+    assert "Motor que redacta" in body
+
+
 def test_the_injected_engines_are_the_ones_used(tmp_path):
     """`engine_source` was accepted and then ignored, so the page always ran
     the real CLIs. The suite only looked fast because another test warmed the

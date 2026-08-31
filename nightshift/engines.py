@@ -119,17 +119,35 @@ def parse_job_answer(text: str) -> dict:
     return {"finished": True, "summary": stripped[:2000]}
 
 
-def get_engine(conn) -> str:
+def _get_setting(conn, key: str) -> str:
     row = conn.execute(
-        "SELECT value FROM settings WHERE key = ?", (SETTINGS_KEY,)).fetchone()
+        "SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row is not None else DEFAULT_ENGINE
 
 
-def set_engine(conn, name: str) -> None:
-    if name not in JOB_ENGINES:
+def _set_setting(conn, key: str, name: str, choices: tuple[str, ...]) -> None:
+    if name not in choices:
         raise ValueError(f"Unknown engine: {name}")
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?, ?)"
         " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (SETTINGS_KEY, name))
+        (key, name))
     conn.commit()
+
+
+def get_engine(conn) -> str:
+    return _get_setting(conn, SETTINGS_KEY)
+
+
+def set_engine(conn, name: str) -> None:
+    _set_setting(conn, SETTINGS_KEY, name, JOB_ENGINES)
+
+
+def get_mail_engine(conn) -> str:
+    """Which engine composes the reply. Claude still fetches and saves every
+    draft: only it holds the Gmail connector."""
+    return _get_setting(conn, MAIL_SETTINGS_KEY)
+
+
+def set_mail_engine(conn, name: str) -> None:
+    _set_setting(conn, MAIL_SETTINGS_KEY, name, MAIL_ENGINES)

@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from nightshift import cycle, db, mail, runner  # noqa: E402
+from nightshift import cycle, db, engines, mail, runner  # noqa: E402
 
 HOME = pathlib.Path.home() / ".night-shift"
 # Measured on 2026-08-30 with three real cycles: a cycle that finds nothing
@@ -27,4 +27,5 @@ if __name__ == "__main__":
     conn = db.connect(HOME / "state.db")
     cycle.run_once(conn, runner_module=runner, mail_module=mail,
                    now=dt.datetime.now(), ceiling_usd=CEILING_USD,
-                   workspace=workspace)
+                   workspace=workspace,
+                   mail_engine=engines.get_mail_engine(conn))

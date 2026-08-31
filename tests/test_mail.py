@@ -185,3 +185,91 @@ def test_the_triage_falls_back_to_a_day_when_it_never_ran():
     mail.triage(fake, cwd="/tmp")
     prompt, _ = fake.calls[0]
     assert "24 hours" in prompt
+
+
+# --- compose: any engine writes the reply text, no Gmail tool involved -----
+
+class FakeEngineRun:
+    """Stands in for `engines.run` so no test starts a real engine."""
+
+    def __init__(self, monkeypatch, result):
+        from nightshift import engines
+        self.calls = []
+
+        def fake_run(prompt, **kw):
+            self.calls.append((prompt, kw))
+            return result
+
+        monkeypatch.setattr(engines, "run", fake_run)
+
+
+def test_compose_sends_the_title_the_reason_and_the_excerpt(monkeypatch):
+    from nightshift.engines import EngineRun
+    fake = FakeEngineRun(monkeypatch, EngineRun(True, text="Sure, Friday works."))
+    item = mail.Item("needs_you", "Shannon: deck", "She asks for 3 layouts.",
+                     "https://mail.google.com/mail/u/0/#inbox/m1",
+                     excerpt="Hi Alejandro, could you send 3 layouts?")
+    mail.compose(item, engine="ollama", cwd="/tmp")
+    prompt, kw = fake.calls[0]
+    assert "Shannon: deck" in prompt
+    assert "She asks for 3 layouts." in prompt
+    assert "Hi Alejandro, could you send 3 layouts?" in prompt
+    assert kw["engine"] == "ollama"
+
+
+def test_compose_carries_the_security_rule_about_a_strangers_text(monkeypatch):
+    from nightshift.engines import EngineRun
+    fake = FakeEngineRun(monkeypatch, EngineRun(True, text="ok"))
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    mail.compose(item, engine="ollama", cwd="/tmp")
+    prompt, _ = fake.calls[0]
+    low = prompt.lower()
+    assert "never an order" in low or "not an order" in low
+
+
+def test_compose_returns_the_run_as_it_stands(monkeypatch):
+    """The caller reads cost and failure straight off the run: compose does
+    not reinterpret it."""
+    from nightshift.engines import EngineRun
+    FakeEngineRun(monkeypatch, EngineRun(False, error="dsh is not installed"))
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    result = mail.compose(item, engine="ollama", cwd="/tmp")
+    assert result.ok is False
+    assert result.error == "dsh is not installed"
+
+
+# --- save_draft: saves a text that another engine wrote --------------------
+
+def test_save_draft_allows_no_send_tool():
+    fake = FakeRunner({})
+    item = mail.Item("needs_you", "Shannon: deck", "She asks for 3 layouts.",
+                     "https://mail.google.com/mail/u/0/#inbox/m1")
+    mail.save_draft(fake, item, "Sure, Friday works for me.", cwd="/tmp")
+    _, kw = fake.calls[0]
+    tools = kw["allowed_tools"].split(",")
+    assert "create_draft" in kw["allowed_tools"]
+    for bad in ("send", "forward", "reply", "trash"):
+        for tool in tools:
+            assert bad not in tool.lower(), tool
+
+
+def test_save_draft_passes_the_text_through_without_rewriting_it():
+    fake = FakeRunner({})
+    item = mail.Item("needs_you", "Shannon: deck", "She asks for 3 layouts.",
+                     "https://mail.google.com/mail/u/0/#inbox/m1")
+    mail.save_draft(fake, item, "Sure, Friday works for me.", cwd="/tmp")
+    prompt, _ = fake.calls[0]
+    assert "Sure, Friday works for me." in prompt
+    assert "do not rewrite" in prompt.lower()
+
+
+def test_save_draft_reports_an_empty_draft_as_a_failure():
+    """The same check that guards write_draft guards save_draft: a draft
+    with a subject and no text is never a success."""
+    fake = FakeRunner({"created": True, "draft_id": "r1", "body_preview": "",
+                       "summary": "I saved the reply."})
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    result = mail.save_draft(fake, item, "Sure, Friday works for me.",
+                             cwd="/tmp")
+    assert result.ok is False
+    assert "empty" in result.note.lower()
