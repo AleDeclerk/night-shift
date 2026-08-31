@@ -8,8 +8,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import (backends, cascade, engines, jobs, life, mail, quota,
-                        runner, signin)
+from nightshift import (backends, board, cascade, engines, jobs, life, mail,
+                        quota, runner, signin)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -108,6 +108,14 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "ladder": ladder, "claude_ceiling": cascade.LADDER[0].ceiling,
             "claude_reserve": claude_reserve})
 
+    @app.get("/semana")
+    def week_page(request: Request):
+        """The board is for looking at the week. Section 6 of the design
+        keeps it off the shift report on purpose: numbers that ask for
+        nothing do not belong on the morning page."""
+        return TEMPLATES.TemplateResponse(request, "week.html", {
+            "week": board.week(conn), "by_day": board.by_day(conn)})
+
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
         jobs.add(conn, prompt)
@@ -150,6 +158,17 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
                 life.record(conn, "draft_written", item_id=item_id,
                             engine=compose_engine, cost_usd=cost, detail=note)
             life.apply_verb(conn, item_id, "rehacer")
+        return RedirectResponse("/", status_code=303)
+
+    # Registered before the generic /items/{item_id}/{verb} below, the same
+    # way "rehacer" is: "rate" is not a verb in life.VERBS, so the generic
+    # route would silently swallow it as an unknown one.
+    @app.post("/items/{item_id}/rate")
+    def rate_item(item_id: int, score: int = Form(...), comment: str = Form("")):
+        try:
+            life.rate(conn, item_id, score, comment or None)
+        except ValueError:
+            pass          # a score outside 1-10 changes nothing
         return RedirectResponse("/", status_code=303)
 
     @app.post("/items/{item_id}/{verb}")

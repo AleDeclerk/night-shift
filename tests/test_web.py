@@ -447,3 +447,61 @@ def test_answering_a_stopped_job_puts_it_back_in_the_queue(tmp_path):
                        (job_id,)).fetchone()
     assert row["state"] == "queued"
     assert row["answer"] == "Sprint 11"
+
+
+# --- the weekly board -----------------------------------------------------
+
+def test_semana_answers_200_and_shows_the_false_alarm_rate(tmp_path):
+    import datetime as dt
+    conn = db.connect(tmp_path / "s.db")
+    now = dt.datetime.now().isoformat()
+    for _ in range(6):
+        conn.execute(
+            "INSERT INTO events (at, kind, detail) VALUES (?,'item_found',"
+            "'needs_you')", (now,))
+    for verb in ("no_era_nada", "no_era_nada", "listo", "listo", "lo_hago_yo"):
+        conn.execute(
+            "INSERT INTO events (at, kind, verb) VALUES (?,'item_closed',?)",
+            (now, verb))
+    conn.commit()
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.get("/semana")
+    assert r.status_code == 200
+    assert "40%" in r.text
+
+
+def test_semana_with_a_thin_week_says_not_enough_history(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    body = client.get("/semana").text
+    assert "no hay suficiente" in body.lower()
+
+
+def test_posting_a_rating_stores_it(tmp_path):
+    from nightshift import life
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+    life.apply_verb(conn, item_id, "listo")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.post(f"/items/{item_id}/rate",
+                    data={"score": "8", "comment": "Good."},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    row = conn.execute("SELECT score, comment FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] == 8
+    assert row["comment"] == "Good."
+
+
+def test_posting_an_invalid_score_changes_nothing(tmp_path):
+    from nightshift import life
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+    life.apply_verb(conn, item_id, "listo")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.post(f"/items/{item_id}/rate", data={"score": "11"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    row = conn.execute("SELECT score FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] is None

@@ -62,6 +62,21 @@ def apply_verb(conn: sqlite3.Connection, item_id: int, verb: str, *,
     return state
 
 
+def rate(conn: sqlite3.Connection, item_id: int, score: int,
+         comment: str | None = None, *, now: dt.datetime | None = None) -> None:
+    """Rate an item, open or closed: the feedback that trains the prompt
+    later needs to know how a draft turned out even after it was sent.
+    A second call on the same item replaces the value, not adds to it. The
+    event is the history, so both ratings stay in it; the item keeps only
+    the latest, the same way `state` keeps only the latest verb."""
+    if not 1 <= score <= 10:
+        raise ValueError(f"Score out of range 1-10: {score}")
+    conn.execute("UPDATE items SET score=?, comment=? WHERE id=?",
+                (score, comment, item_id))
+    conn.commit()
+    record(conn, "item_rated", item_id=item_id, detail=str(score), now=now)
+
+
 def state_from_events(conn: sqlite3.Connection, item_id: int) -> str:
     """The state, derived from the events alone, with no read of the column.
     A test uses this to prove the column and the record agree."""

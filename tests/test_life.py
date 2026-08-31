@@ -155,3 +155,86 @@ def test_an_event_with_no_time_uses_the_clock(tmp_path):
     life.record(conn, "cycle_ran")
     stored = conn.execute("SELECT at FROM events").fetchone()[0]
     assert stored.startswith(dt.datetime.now().strftime("%Y-%m-%d"))
+
+
+# --- the feedback ---------------------------------------------------------
+
+def test_rate_stores_the_score_and_the_comment(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    life.rate(conn, item_id, 7, "Good draft.", now=NOW)
+    row = conn.execute("SELECT score, comment FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] == 7
+    assert row["comment"] == "Good draft."
+
+
+def test_rate_works_on_a_closed_item_too(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    life.apply_verb(conn, item_id, "listo", now=NOW)
+    life.rate(conn, item_id, 9, now=NOW)
+    row = conn.execute("SELECT score FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] == 9
+
+
+def test_rate_refuses_a_score_below_the_range(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    try:
+        life.rate(conn, item_id, 0, now=NOW)
+        assert False, "should have raised"
+    except ValueError:
+        pass
+    row = conn.execute("SELECT score FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] is None
+
+
+def test_rate_refuses_a_score_above_the_range(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    try:
+        life.rate(conn, item_id, 11, now=NOW)
+        assert False, "should have raised"
+    except ValueError:
+        pass
+    row = conn.execute("SELECT score FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] is None
+
+
+def test_rate_twice_replaces_the_previous_score(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    life.rate(conn, item_id, 3, "First pass.", now=NOW)
+    life.rate(conn, item_id, 8, "Changed my mind.", now=NOW)
+    row = conn.execute("SELECT score, comment FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["score"] == 8
+    assert row["comment"] == "Changed my mind."
+
+
+def test_rate_writes_an_item_rated_event_with_the_score(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    life.rate(conn, item_id, 6, now=NOW)
+    row = conn.execute(
+        "SELECT * FROM events WHERE item_id=? AND kind='item_rated'",
+        (item_id,)).fetchone()
+    assert row is not None
+    assert row["detail"] == "6"
+
+
+def test_rate_twice_leaves_both_events_in_the_history(tmp_path):
+    """Rule 3 of the life design: the events never disappear. The item keeps
+    only the latest score, but the history keeps every rating."""
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    life.rate(conn, item_id, 3, now=NOW)
+    life.rate(conn, item_id, 8, now=NOW)
+    rows = conn.execute(
+        "SELECT detail FROM events WHERE item_id=? AND kind='item_rated'"
+        " ORDER BY id", (item_id,)).fetchall()
+    assert [r["detail"] for r in rows] == ["3", "8"]

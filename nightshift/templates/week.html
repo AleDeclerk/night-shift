@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIGHT SHIFT — el balance de la semana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;500;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12100e; --ink-soft:#2a2622; --paper:#ddd7ca; --paper-bright:#ebe6da;
+  --paper-dim:#c8c1b2; --stamp:#8f2018; --rule:#12100e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--ink)}
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:"Courier Prime",ui-monospace,monospace;font-size:15px;line-height:1.55;
+  padding:0 0 6rem;position:relative;overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;opacity:.55;animation:grain .48s steps(3) infinite;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:radial-gradient(ellipse 120% 85% at 50% 45%,transparent 45%,rgba(18,16,14,.28) 88%,rgba(18,16,14,.52) 100%);
+  animation:flicker 5.5s ease-in-out infinite;
+}
+@keyframes grain{0%,100%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}
+  50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-2%)}}
+@keyframes flicker{0%,100%{opacity:1}42%{opacity:.94}44%{opacity:1}77%{opacity:.96}}
+@media (prefers-reduced-motion:reduce){
+  body::before,body::after{animation:none}
+}
+.sheet{max-width:44rem;margin:0 auto;padding:0 1.5rem}
+
+header{border-bottom:6px double var(--rule);padding:2.6rem 0 1.6rem;text-align:center}
+.back{font-family:"Oswald",sans-serif;font-weight:500;font-size:.62rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);
+  text-decoration:none;display:inline-block;margin-bottom:1.1rem}
+.back:hover{color:var(--stamp)}
+h1{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:clamp(2rem,7vw,3.4rem);line-height:.9;letter-spacing:.05em;text-transform:uppercase}
+h1 .thin{display:block;font-weight:300;font-size:.34em;letter-spacing:.5em;
+  margin-top:.7rem;text-indent:.5em}
+.tagline{font-family:"Playfair Display",serif;font-style:italic;font-weight:700;
+  font-size:1rem;margin-top:1.2rem;color:var(--ink-soft)}
+
+.card-title{text-align:center;margin:3rem 0 1.4rem;padding:1rem .8rem;
+  border-top:3px solid var(--rule);border-bottom:3px solid var(--rule);
+  position:relative;background:var(--paper-bright)}
+.card-title h2{font-family:"Playfair Display",serif;font-weight:900;
+  font-size:clamp(1.1rem,3.4vw,1.6rem);letter-spacing:.05em;text-transform:uppercase}
+.card-title .count{font-family:"Oswald",sans-serif;font-weight:300;font-size:.62rem;
+  letter-spacing:.28em;text-transform:uppercase;color:var(--ink-soft);margin-top:.35rem}
+.card-title::before,.card-title::after{content:"✦";position:absolute;top:50%;
+  transform:translateY(-50%);font-size:.7rem;color:var(--ink-soft)}
+.card-title::before{left:1rem}.card-title::after{right:1rem}
+
+.alarm{border:3px solid var(--stamp);background:var(--paper-bright);padding:1rem 1.2rem;margin-bottom:1.6rem}
+.alarm b{font-family:"Oswald",sans-serif;letter-spacing:.14em;text-transform:uppercase;
+  font-size:.7rem;color:var(--stamp);display:block;margin-bottom:.3rem}
+
+.oneline{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+  border:3px solid var(--rule);background:var(--paper-bright)}
+.oneline .cell{padding:1rem 1.1rem;border-right:1px dashed var(--ink-soft);text-align:center}
+.oneline .cell:last-child{border-right:0}
+.oneline .k{font-family:"Oswald",sans-serif;font-weight:500;font-size:.6rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+.oneline .v{font-size:1.7rem;font-weight:700;margin-top:.25rem}
+
+/* la tasa de falsas alarmas: el numero mas grande de la pagina, a proposito */
+.headline{border:3px solid var(--stamp);background:var(--paper-bright);
+  padding:2.2rem 1.5rem;text-align:center;margin-top:1.6rem}
+.headline .k{font-family:"Oswald",sans-serif;font-weight:500;font-size:.7rem;
+  letter-spacing:.26em;text-transform:uppercase;color:var(--ink-soft)}
+.headline .v{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:clamp(3.2rem,16vw,6rem);line-height:1;color:var(--stamp);margin-top:.4rem}
+.headline .v.thin{font-family:"Playfair Display",serif;font-style:italic;
+  font-weight:700;color:var(--ink);font-size:clamp(1.3rem,4vw,1.8rem)}
+.headline .note{font-family:"Playfair Display",serif;font-style:italic;
+  color:var(--ink-soft);margin-top:.7rem;font-size:.94rem}
+
+table.verbs{width:100%;border-collapse:collapse;border:2px solid var(--rule)}
+table.verbs th,table.verbs td{padding:.55rem .8rem;border-bottom:1px dashed var(--ink-soft);
+  text-align:left}
+table.verbs th{font-family:"Oswald",sans-serif;font-weight:700;font-size:.62rem;
+  letter-spacing:.16em;text-transform:uppercase;background:var(--paper-bright)}
+table.verbs td.n{font-family:"Courier Prime",monospace;font-weight:700;text-align:right}
+table.verbs tr:last-child td{border-bottom:0}
+
+.stat{border:2px solid var(--rule);background:var(--paper-bright);padding:1.15rem 1.35rem;
+  margin-bottom:1rem}
+.stat .k{font-family:"Oswald",sans-serif;font-weight:500;font-size:.62rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+.stat .v{font-size:1.5rem;font-weight:700;margin-top:.3rem}
+.stat .sub{font-family:"Playfair Display",serif;font-style:italic;
+  color:var(--ink-soft);margin-top:.3rem;font-size:.9rem}
+
+.engines{border:2px solid var(--rule);background:var(--paper-bright)}
+.engines .row{display:flex;justify-content:space-between;gap:1rem;padding:.7rem 1rem;
+  border-bottom:1px dashed var(--ink-soft);flex-wrap:wrap}
+.engines .row:last-child{border-bottom:0}
+.engines .name{font-family:"Oswald",sans-serif;font-weight:700;font-size:.8rem;
+  letter-spacing:.08em;text-transform:uppercase}
+.engines .nums{font-family:"Courier Prime",monospace;font-size:.85rem;color:var(--ink-soft)}
+
+.bars{display:flex;align-items:flex-end;gap:.5rem;height:9rem;
+  border:2px solid var(--rule);background:var(--paper-bright);padding:1rem 1rem .6rem}
+.bars .col{flex:1 1 0;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-end;height:100%;gap:.3rem}
+.bars .bar{width:100%;max-width:2.2rem;background:var(--ink);min-height:2px}
+.bars .n{font-family:"Courier Prime",monospace;font-weight:700;font-size:.72rem}
+.bars .d{font-family:"Oswald",sans-serif;font-weight:500;font-size:.55rem;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-top:.3rem}
+.bars .s{font-family:"Courier Prime",monospace;font-size:.62rem;color:var(--ink-soft)}
+
+.empty{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
+  text-align:center;padding:1.2rem}
+
+footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
+  text-align:center;font-family:"Playfair Display",serif;font-style:italic;
+  color:var(--ink-soft);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <a class="back" href="/">← Volver al parte</a>
+  <h1>El balance<span class="thin">lo que hizo la semana</span></h1>
+  <p class="tagline">Cada número sale de una fila que algo escribió.</p>
+</header>
+
+{% if not week.enough %}
+<div class="alarm">
+  <b>Todavía no hay suficiente historia</b>
+  Esta ventana sólo tiene {{ week.reviewed }} correo(s) revisado(s). Hacen
+  falta al menos 5 para que estos números digan algo.
+</div>
+{% endif %}
+
+<!-- 1. la semana en una línea -->
+<div class="oneline">
+  <div class="cell">
+    <div class="k">Revisados</div>
+    <div class="v">{{ week.reviewed }}</div>
+  </div>
+  <div class="cell">
+    <div class="k">Levantados</div>
+    <div class="v">{{ week.raised }}</div>
+  </div>
+  <div class="cell">
+    <div class="k">Cerrados</div>
+    <div class="v">{{ week.closed.values() | sum }}</div>
+  </div>
+</div>
+
+<!-- 2. la tasa de falsas alarmas: el único número que dice si la triaje
+     clasifica bien, así que se lleva el lugar más grande de la página -->
+<div class="card-title"><h2>Falsas alarmas</h2>
+  <div class="count">de lo que se levantó y se cerró</div></div>
+<div class="headline">
+  {% if week.false_alarm_rate is none %}
+  <div class="k">Tasa de falsa alarma</div>
+  <div class="v thin">No hay suficiente historia todavía</div>
+  <div class="note">
+    Hacen falta al menos 5 cierres para que la tasa signifique algo.
+    {% set closed_total = week.closed.values() | sum %}
+    {% if closed_total < 5 %}Faltan {{ 5 - closed_total }} más.{% endif %}
+  </div>
+  {% else %}
+  <div class="k">Tasa de falsa alarma</div>
+  <div class="v">{{ "%.0f"|format(week.false_alarm_rate * 100) }}%</div>
+  <div class="note">de los correos cerrados, "No era nada" los cerró.</div>
+  {% endif %}
+</div>
+
+<!-- 3. qué hizo el usuario -->
+<div class="card-title"><h2>Los veredictos</h2>
+  <div class="count">un cierre por correo</div></div>
+{% set verb_labels = {"listo": "Listo", "lo_hago_yo": "Lo hizo a mano",
+  "no_era_nada": "No era nada", "manana": "A mañana", "rehacer": "Rehecho"} %}
+{% if week.closed %}
+<table class="verbs">
+  <tr><th>Veredicto</th><th>Cantidad</th></tr>
+  {% for verb, n in week.closed.items() %}
+  <tr><td>{{ verb_labels.get(verb, verb) }}</td><td class="n">{{ n }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">Nada se cerró esta semana.</p>
+{% endif %}
+
+<!-- 4. cuánto espera un correo antes de cerrarse -->
+<div class="card-title"><h2>Tiempo de espera</h2>
+  <div class="count">de encontrado a cerrado</div></div>
+<div class="stat">
+  <div class="k">Mediana</div>
+  {% if week.hours_to_close is none %}
+  <div class="v">—</div>
+  <div class="sub">Nada se cerró esta semana.</div>
+  {% else %}
+  <div class="v">{{ "%.1f"|format(week.hours_to_close) }} horas</div>
+  {% endif %}
+</div>
+
+<!-- 5. el gasto de cada motor -->
+<div class="card-title"><h2>Gasto por motor</h2>
+  <div class="count">cada llamada que dejó su costo</div></div>
+{% if week.spend %}
+<div class="engines">
+  {% for name, s in week.spend.items() %}
+  <div class="row">
+    <span class="name">{{ name }}</span>
+    <span class="nums">{{ "%.2f"|format(s.cost_usd) }} USD · {{ s.calls }} llamada(s)</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">Ningún motor trabajó esta semana.</p>
+{% endif %}
+
+<!-- 6. los encargos -->
+<div class="card-title"><h2>Encargos</h2>
+  <div class="count">terminados y fallados</div></div>
+<div class="oneline">
+  <div class="cell">
+    <div class="k">Terminados</div>
+    <div class="v">{{ week.jobs.job_done }}</div>
+  </div>
+  <div class="cell">
+    <div class="k">Fallados</div>
+    <div class="v">{{ week.jobs.job_failed }}</div>
+  </div>
+</div>
+
+<!-- 7. las barras diarias -->
+<div class="card-title"><h2>Día por día</h2>
+  <div class="count">correos encontrados</div></div>
+{% set max_found = (by_day | map(attribute='found') | max) or 1 %}
+<div class="bars">
+  {% for row in by_day %}
+  <div class="col">
+    <div class="n">{{ row.found }}</div>
+    <div class="bar" style="height:{{ (row.found / max_found * 100) if max_found else 0 }}%"></div>
+    <div class="d">{{ row.date[5:] }}</div>
+    <div class="s">{{ "%.2f"|format(row.spend) }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<footer>Night Shift · el balance no reemplaza al parte de hoy</footer>
+</div>
+</body>
+</html>

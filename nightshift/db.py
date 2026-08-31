@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS items (
   excerpt    TEXT,
   state         TEXT NOT NULL DEFAULT 'pending',
   closed_at     TEXT,
-  snoozed_until TEXT
+  snoozed_until TEXT,
+  score         INTEGER,
+  comment       TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id          INTEGER PRIMARY KEY,
@@ -67,7 +69,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     already exists. Measured on 2026-08-31: the live state.db under
     ~/.night-shift predates `excerpt`, and the next scheduled cycle would
     crash on the first insert without this. The same is true of `state`,
-    `closed_at` and `snoozed_until`, added for the life of a task: a live
+    `closed_at` and `snoozed_until`, added for the life of a task, and of
+    `score` and `comment`, added for the feedback that follows it: a live
     database has real rows, and a missing column would crash the next
     scheduled cycle at 06:30.
     """
@@ -81,6 +84,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE items ADD COLUMN closed_at TEXT")
     if "snoozed_until" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN snoozed_until TEXT")
+    if "score" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN score INTEGER")
+    if "comment" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN comment TEXT")
 
 
 def connect(path: pathlib.Path) -> sqlite3.Connection:

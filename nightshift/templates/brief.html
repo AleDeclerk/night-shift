@@ -157,6 +157,22 @@ details[open] summary{border-bottom:1px dashed var(--ink-soft)}
 .slug .jobanswer input::placeholder{color:var(--ink-soft);font-style:italic}
 .slug .jobanswer button{flex:0 0 auto}
 
+/* el puntaje bajo cada pieza de Ya revisado: un detalle chico, no un panel */
+.slug .rate{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;
+  margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--ink-soft)}
+.slug .rate label{font-family:"Oswald",sans-serif;font-weight:500;font-size:.58rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
+.slug .rate select{font-family:"Courier Prime",monospace;font-size:.78rem;
+  background:var(--paper);border:2px solid var(--ink);padding:.25rem .4rem;color:var(--ink)}
+.slug .rate input{flex:1 1 8rem;font-family:"Courier Prime",monospace;font-size:.78rem;
+  background:var(--paper);border:2px solid var(--ink);padding:.25rem .45rem;color:var(--ink)}
+.slug .rate input::placeholder{color:var(--ink-soft);font-style:italic}
+.slug .rate button{flex:0 0 auto;font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);border:2px solid var(--ink);
+  padding:.3rem .55rem;cursor:pointer}
+.slug .rate button:hover{background:var(--stamp);border-color:var(--stamp)}
+
 .probe{margin-top:.85rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft);
   font-family:"Courier Prime",monospace;font-size:.68rem;color:var(--ink-soft);line-height:1.5}
 .probe .ok{font-weight:700;color:var(--ink)}
@@ -296,6 +312,7 @@ body{padding:0;overflow:hidden}
   letter-spacing:.18em;text-transform:uppercase;cursor:pointer;
   background:var(--paper-bright);color:var(--ink);border:2px solid var(--ink);
   padding:.42rem .9rem;display:inline-flex;align-items:center;gap:.5rem;
+  text-decoration:none;
 }
 .roombtn:hover{background:var(--ink);color:var(--paper)}
 .roombtn .down{width:9px;height:9px;border-radius:50%;background:var(--stamp);
@@ -415,6 +432,7 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
     {% if engines | rejectattr('signed_in') | list %}<span class="down" title="Un motor sin sesión"></span>{% endif %}
     Sala de máquinas
   </button>
+  <a class="roombtn" href="/semana">El balance de la semana</a>
   <div class="timecard">
   <div class="cell cell--tight">
     <div class="k">Último turno</div>
@@ -548,6 +566,18 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
   <h3>{{ i["title"] }}</h3>
   <p class="verdict"><b>{{ verb_labels.get(i["verb"], i["verb"] or "?") }}</b>
     {% if i["closed_at"] %} · {{ i["closed_at"]|when }}{% endif %}</p>
+  <form class="rate" method="post" action="/items/{{ i['id'] }}/rate">
+    <label for="score-{{ i['id'] }}">Puntaje</label>
+    <select id="score-{{ i['id'] }}" name="score" required>
+      <option value="" disabled {% if not i["score"] %}selected{% endif %}>—</option>
+      {% for n in range(1, 11) %}
+      <option value="{{ n }}" {% if i["score"] == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="comment" placeholder="Comentario (opcional)"
+           value="{{ i['comment'] or '' }}">
+    <button type="submit">{% if i["score"] %}Cambiar{% else %}Puntuar{% endif %}</button>
+  </form>
 </article>
 {% endfor %}
 {% for j in jobs_done %}
