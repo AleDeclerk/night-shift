@@ -133,3 +133,25 @@ def test_false_alarm_rate_counts_only_no_era_nada_as_false(tmp_path):
 
     rate = life.false_alarm_rate(conn, days=14)
     assert rate == {"raised": 3, "false": 1}
+
+
+def test_an_event_can_be_stamped_with_a_given_time(tmp_path):
+    """The cycle takes a `now` and the cascade reads `events.at` to decide if
+    there is room. If the record ignores that clock, the governor judges with
+    one time while the cycle works with another."""
+    import datetime as dt
+    from nightshift import db, life
+    conn = db.connect(tmp_path / "s.db")
+    when = dt.datetime(2026, 8, 26, 3, 0)
+    life.record(conn, "cycle_ran", cost_usd=1.5, now=when)
+    stored = conn.execute("SELECT at FROM events").fetchone()[0]
+    assert stored.startswith("2026-08-26T03:00")
+
+
+def test_an_event_with_no_time_uses_the_clock(tmp_path):
+    import datetime as dt
+    from nightshift import db, life
+    conn = db.connect(tmp_path / "s.db")
+    life.record(conn, "cycle_ran")
+    stored = conn.execute("SELECT at FROM events").fetchone()[0]
+    assert stored.startswith(dt.datetime.now().strftime("%Y-%m-%d"))

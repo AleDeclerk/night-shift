@@ -23,14 +23,20 @@ _CLOSED_STATES = ("done", "dismissed")
 def record(conn: sqlite3.Connection, kind: str, *, item_id: int | None = None,
            job_id: int | None = None, verb: str | None = None,
            engine: str | None = None, cost_usd: float = 0.0,
-           detail: str | None = None) -> int:
+           detail: str | None = None, now: dt.datetime | None = None) -> int:
     """Insert one event and commit. The event is the record, so a caller
-    that forgets to commit would leave work that looks done but is not."""
+    that forgets to commit would leave work that looks done but is not.
+
+    `now` matters more than it looks: the cascade reads `events.at` to decide
+    whether an engine still has room. A record that ignores the clock of its
+    caller makes the governor judge with one time while the cycle works with
+    another.
+    """
     cur = conn.execute(
         "INSERT INTO events (at, kind, item_id, job_id, verb, engine,"
         " cost_usd, detail) VALUES (?,?,?,?,?,?,?,?)",
-        (dt.datetime.now().isoformat(), kind, item_id, job_id, verb, engine,
-         cost_usd, detail))
+        ((now or dt.datetime.now()).isoformat(), kind, item_id, job_id, verb,
+         engine, cost_usd, detail))
     conn.commit()
     return cur.lastrowid
 
