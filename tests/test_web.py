@@ -306,3 +306,14 @@ def test_the_injected_engines_are_the_ones_used(tmp_path):
                                    ceiling_usd=20.0)).get("/").text
     assert called, "the page ignored the injected source"
     assert "MOTOR-INYECTADO" in body
+
+
+def test_the_panel_tells_the_connector_from_the_ability_to_work(tmp_path):
+    """`Ve el correo: NO` read as "this engine is useless for mail". Only the
+    connector is exclusive: a local model reads the stored mail and writes the
+    reply without one."""
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "Conector de Gmail" in body
+    assert "Trabaja el correo" in body

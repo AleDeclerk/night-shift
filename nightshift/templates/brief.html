@@ -439,6 +439,13 @@ dialog#room .caps li{font-size:.68rem}
     <button class="close" id="close-room">Cerrar</button>
   </div>
   <div class="roombody">
+    <p class="note" style="margin:0 0 .9rem;text-align:left">
+      Sólo Claude tiene <strong>conector</strong>: es el único que puede bajar y
+      guardar el correo. <strong>Trabajar</strong> el correo es otra cosa, y
+      cualquier motor con sesión puede: lee lo guardado con
+      <code>scripts/ns-mail</code> o recibe el texto en el prompt. Un modelo
+      local puede leer y redactar sus respuestas sin que salgan de esta Mac.
+    </p>
 <div class="machines">
 {% for e in engines %}
   <div class="engine {{ 'on' if e.signed_in else 'off' }}">
@@ -452,8 +459,10 @@ dialog#room .caps li{font-size:.68rem}
       <li><span>Sesión activa</span>
         {% if e.signed_in is none %}<span class="unk">SE DESCONOCE</span>
         {% else %}<span class="{{ 'yes' if e.signed_in else 'no' }}">{{ 'SÍ' if e.signed_in else 'NO' }}</span>{% endif %}</li>
-      <li><span>Ve el correo</span>
+      <li><span>Conector de Gmail</span>
         <span class="{{ 'yes' if e.sees_mail else 'no' }}">{{ 'SÍ' if e.sees_mail else 'NO' }}</span></li>
+      <li><span>Trabaja el correo</span>
+        <span class="{{ 'yes' if e.can_work_mail else 'no' }}">{{ 'SÍ' if e.can_work_mail else 'NO' }}</span></li>
       <li><span>Esquema forzado</span>
         <span class="{{ 'yes' if e.forced_schema else 'no' }}">{{ 'SÍ' if e.forced_schema else 'NO' }}</span></li>
     </ul>
