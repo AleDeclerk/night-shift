@@ -335,5 +335,6 @@ def test_the_bar_says_who_does_what(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     body = TestClient(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
-    assert "redacta:" in body
-    assert "encargos:" in body
+    assert "Motor del correo" in body
+    assert "Motor que redacta" in body
+    assert "Motor de tareas" in body

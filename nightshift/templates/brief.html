@@ -338,6 +338,15 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
 .chip--off{border-color:var(--stamp);color:var(--stamp);opacity:.85}
 .chip--off .dot{background:var(--stamp)}
 .chip--off:hover{background:var(--stamp);border-color:var(--stamp)}
+
+/* ---- la barra: dos celdas chicas de estado y cuatro de motores ---- */
+.bar .timecard{grid-template-columns:none;display:flex;flex-wrap:wrap}
+.bar .cell--tight{flex:0 0 auto;min-width:8.5rem}
+.bar .cell--eng{flex:1 1 9.5rem;min-width:9.5rem}
+.cell .v.tiny{font-size:.58rem;font-weight:400;color:var(--ink-soft);
+  margin-top:.15rem;line-height:1.25}
+.cell--eng .v{font-family:"Oswald",sans-serif;font-weight:700;letter-spacing:.06em;
+  font-size:.95rem}
 </style>
 </head>
 <body>
@@ -358,28 +367,43 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
     Sala de máquinas
   </button>
   <div class="timecard">
-  <div class="cell">
-    <div class="k">Último turno cerrado</div>
+  <div class="cell cell--tight">
+    <div class="k">Último turno</div>
     <div class="v small">{{ last_good }}</div>
   </div>
-  <div class="cell">
-    <div class="k">Consumo semanal</div>
+  <div class="cell cell--tight">
+    <div class="k">Consumo</div>
     <div class="v">{{ spent }} / {{ ceiling }}</div>
     <div class="gauge"><span style="width:{{ (spent / ceiling * 100) if ceiling else 0 }}%"></span></div>
-    <div class="v small">equivalente en USD, no es un cobro</div>
+    <div class="v tiny">no es un cobro</div>
   </div>
-  <div class="cell cell--engines">
+
+  <div class="cell cell--eng">
+    <div class="k">Motor del correo</div>
+    <div class="v">CLAUDE</div>
+    <div class="v tiny">baja y guarda · único con conector</div>
+  </div>
+  <div class="cell cell--eng">
+    <div class="k">Motor que redacta</div>
+    <div class="v">{{ mail_engine|upper }}</div>
+    <div class="v tiny">escribe el texto de la respuesta</div>
+  </div>
+  <div class="cell cell--eng">
+    <div class="k">Motor de tareas</div>
+    <div class="v">{{ job_engine|upper }}</div>
+    <div class="v tiny">hace los encargos de la cola</div>
+  </div>
+  <div class="cell cell--eng">
     <div class="k">Motores</div>
     <div class="strip">
       {% for e in engines %}
       <button type="button" class="chip{% if not e.signed_in %} chip--off{% endif %}"
               data-open-room="1"
-              title="{{ e.label }}: {% if e.signed_in %}con sesión{% else %}sin sesión{% endif %}{% if e.sees_mail %} · conector de Gmail{% endif %}">
+              title="{{ e.label }}: {% if e.signed_in %}con sesión{% else %}sin sesión{% endif %}">
         <span class="dot"></span>{{ e.label }}
       </button>
       {% endfor %}
     </div>
-    <div class="v small">baja: CLAUDE · redacta: {{ mail_engine|upper }} · encargos: {{ job_engine|upper }}</div>
   </div>
 </div>
 </div>
