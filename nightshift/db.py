@@ -31,6 +31,15 @@ CREATE TABLE IF NOT EXISTS jobs (
   answer      TEXT,
   result_path TEXT
 );
+CREATE TABLE IF NOT EXISTS probes (
+  id       INTEGER PRIMARY KEY,
+  engine   TEXT NOT NULL,
+  at       TEXT NOT NULL,
+  ok       INTEGER NOT NULL,
+  can_mail INTEGER,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  detail   TEXT
+);
 """
 
 

@@ -87,7 +87,8 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "jobs_waiting": job_rows("needs_you", "failed"),
             "jobs_queued": job_rows("queued", "running"),
             "jobs_done": job_rows("done"),
-            "engines": backends.check_all()})
+            "engines": backends.check_all(),
+            "probes": backends.last_probes(conn)})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
@@ -131,5 +132,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         if flow is not None:
             flow.cancel()
         return {"state": "cancelled"}
+
+    @app.post("/machines/{name}/probe")
+    def probe_engine(name: str):
+        result = backends.probe(name)
+        backends.save_probe(conn, result)
+        backends.invalidate()
+        return {"ok": result.ok, "can_mail": result.can_mail,
+                "cost_usd": result.cost_usd, "detail": result.detail}
 
     return app

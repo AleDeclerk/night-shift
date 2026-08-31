@@ -5,8 +5,10 @@ machine claims. A real probe, which costs 0.17 to 0.34 USD, is a separate
 feature that runs only when the user asks for it.
 """
 import dataclasses
+import datetime as dt
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import threading
@@ -152,3 +154,104 @@ def check_all(runner=None, use_cache: bool | None = None,
 def warm_up() -> None:
     """Fill the cache in the background, so the first page waits for nothing."""
     threading.Thread(target=lambda: check_all(), daemon=True).start()
+
+
+# --- The real probe. Costs 0.17 to 0.34 USD, only runs on request. ---------
+
+PROBE_PROMPT = (
+    "Use your gmail tool to list the labels of this mailbox. "
+    "Answer with the single word MAIL-OK when the call works. "
+    "Answer with the single word NO-MAIL when you have no gmail tool, or when "
+    "the call fails. Answer with nothing else.")
+
+# Each engine speaks its own CLI. None of them takes an API key: this project
+# runs on subscriptions only.
+PROBE_COMMANDS = {
+    "claude": ["claude", "-p", PROBE_PROMPT, "--output-format", "json"],
+    "gemini": ["gemini", "-p", PROBE_PROMPT, "-o", "json",
+               "--approval-mode", "yolo"],
+    "cursor": ["cursor-agent", "-p", PROBE_PROMPT, "--output-format", "json",
+               "--approve-mcps", "--force"],
+    "ollama": ["ollama", "run", "qwen3.8:27b-mlx", PROBE_PROMPT],
+}
+PROBE_TIMEOUT = 180
+
+# Case-insensitive markers of a call that failed, even when the process exits
+# clean and prints something. Configuration lies; these strings are what the
+# real call says when it could not do the work.
+_FAILURE_MARKERS = (
+    "ineligibletier", "incompatible auth server", "not logged in",
+    "failed to authenticate", "oauth access token has expired")
+
+# A detail is for a person reading a status page, never a place to carry a
+# login link. Strip the query string off any URL before it is kept.
+_URL_QUERY = re.compile(r"(https?://\S+?)\?\S+")
+
+
+@dataclasses.dataclass(frozen=True)
+class ProbeResult:
+    engine: str
+    ok: bool           # the engine answered at all
+    can_mail: bool     # the engine read the mailbox
+    cost_usd: float
+    detail: str        # short, for the page. Never a credential.
+
+
+def _scrub(text: str) -> str:
+    return _URL_QUERY.sub(r"\1", text)
+
+
+def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
+    """Make the one real call. What comes back is evidence; what the engine
+    claims about itself, elsewhere, is not."""
+    command = PROBE_COMMANDS.get(engine)
+    if command is None:
+        return ProbeResult(engine, False, False, 0.0, "unknown engine")
+
+    cwd = workspace or WORKSPACE
+    try:
+        if runner is not None:
+            raw = runner(command, cwd=cwd)
+        else:
+            out = subprocess.run(command, cwd=cwd, capture_output=True,
+                                 text=True, timeout=PROBE_TIMEOUT)
+            raw = (out.stdout or "") + (out.stderr or "")
+    except OSError as exc:
+        return ProbeResult(engine, False, False, 0.0,
+                           f"could not run {engine}: {exc}")
+    except subprocess.TimeoutExpired:
+        return ProbeResult(engine, False, False, 0.0,
+                           f"{engine} did not answer within {PROBE_TIMEOUT}s")
+
+    cost = 0.0
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        text = raw
+    else:
+        text = data.get("result") or data.get("response") or raw
+        cost = float(data.get("total_cost_usd") or 0.0)
+
+    lowered = text.lower()
+    can_mail = "MAIL-OK" in text
+    ok = bool(text.strip()) and not any(
+        marker in lowered for marker in _FAILURE_MARKERS)
+    detail = _scrub(text).strip()[:200]
+    return ProbeResult(engine, ok, can_mail, cost, detail)
+
+
+def save_probe(conn, result: ProbeResult) -> None:
+    conn.execute(
+        "INSERT INTO probes (engine, at, ok, can_mail, cost_usd, detail)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (result.engine, dt.datetime.now().isoformat(), int(result.ok),
+         int(result.can_mail), result.cost_usd, result.detail))
+    conn.commit()
+
+
+def last_probes(conn) -> dict:
+    """The newest probe row of each engine, keyed by engine name."""
+    rows = conn.execute(
+        "SELECT * FROM probes WHERE id IN"
+        " (SELECT MAX(id) FROM probes GROUP BY engine)").fetchall()
+    return {row["engine"]: row for row in rows}
