@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS items (
   title      TEXT NOT NULL,
   body       TEXT,
   source_url TEXT,
-  opened_at  TEXT
+  opened_at  TEXT,
+  excerpt    TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id          INTEGER PRIMARY KEY,

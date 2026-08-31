@@ -160,6 +160,20 @@ def test_the_item_keeps_the_trace_of_its_draft(tmp_path):
     assert "empty draft" in body.lower()  # and the trouble is visible
 
 
+def test_the_excerpt_reaches_the_items_table(tmp_path):
+    """mailstore reads the excerpt straight from this column, so the cycle
+    must write it, not just the reason."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(items=[Item("no_action", "AWS bill", "It is a receipt.",
+                            "https://x/1",
+                            excerpt="Your invoice for August is attached.")])
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path)
+    excerpt = conn.execute("SELECT excerpt FROM items").fetchone()[0]
+    assert excerpt == "Your invoice for August is attached."
+
+
 def test_a_message_already_seen_gets_no_second_draft(tmp_path):
     """The triage reads a 24 hour window and the scheduler runs twice a day,
     so every message arrives at least twice. Without this the user collects

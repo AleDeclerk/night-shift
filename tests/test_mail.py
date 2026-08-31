@@ -29,6 +29,19 @@ def test_a_message_that_needs_an_answer_becomes_a_needs_you_item():
     assert result.error is None
 
 
+def test_the_triage_keeps_the_excerpt():
+    """The local model has no way to fetch Gmail, so it needs the message
+    itself, not just the reason the agent gave."""
+    fake = FakeRunner({"messages": [
+        {"id": "m1", "title": "Shannon: Deck templates",
+         "why": "She asks for 3 layouts.", "needs_action": True,
+         "source_url": "https://mail.google.com/mail/u/0/#inbox/m1",
+         "excerpt": "Hi Alejandro, could you send 3 layouts by Friday?"}]})
+    result = mail.triage(fake, cwd="/tmp")
+    assert result.items[0].excerpt == (
+        "Hi Alejandro, could you send 3 layouts by Friday?")
+
+
 def test_a_message_with_no_action_goes_to_the_folded_list():
     fake = FakeRunner({"messages": [
         {"id": "m2", "title": "AWS bill", "why": "It is a receipt.",

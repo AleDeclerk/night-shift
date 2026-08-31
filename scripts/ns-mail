@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Read the mail store from the shell. For the local model: no MCP, one
+command. Usage:
+
+  ns-mail list [--bucket needs_you] [--limit 20]
+  ns-mail show <id>
+  ns-mail search <text>
+  ns-mail counts
+"""
+import argparse
+import os
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+from nightshift import db, mailstore  # noqa: E402
+
+DEFAULT_DB = pathlib.Path.home() / ".night-shift" / "state.db"
+
+
+def _db_path() -> pathlib.Path:
+    return pathlib.Path(os.environ.get("NIGHTSHIFT_DB", DEFAULT_DB))
+
+
+def _print_line(item: dict) -> None:
+    print(f"{item['id']}\t{item['bucket']}\t{item['created_at']}\t"
+          f"{item['title']}")
+
+
+def cmd_list(conn, args) -> int:
+    for item in mailstore.recent(conn, limit=args.limit, bucket=args.bucket):
+        _print_line(item)
+    return 0
+
+
+def cmd_show(conn, args) -> int:
+    item = mailstore.message(conn, args.id)
+    if item is None:
+        print(f"No item with id {args.id}.")
+        return 1
+    print(f"id: {item['id']}")
+    print(f"bucket: {item['bucket']}")
+    print(f"created_at: {item['created_at']}")
+    print(f"title: {item['title']}")
+    print(f"source_url: {item['source_url']}")
+    print(f"body: {item['body']}")
+    print("excerpt:")
+    print(item["excerpt"])
+    return 0
+
+
+def cmd_search(conn, args) -> int:
+    for item in mailstore.search(conn, args.text, limit=args.limit):
+        _print_line(item)
+    return 0
+
+
+def cmd_counts(conn, args) -> int:
+    for bucket, n in mailstore.counts(conn).items():
+        print(f"{bucket}\t{n}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="ns-mail")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_list = sub.add_parser("list")
+    p_list.add_argument("--bucket", default=None)
+    p_list.add_argument("--limit", type=int, default=20)
+    p_list.set_defaults(func=cmd_list)
+
+    p_show = sub.add_parser("show")
+    p_show.add_argument("id", type=int)
+    p_show.set_defaults(func=cmd_show)
+
+    p_search = sub.add_parser("search")
+    p_search.add_argument("text")
+    p_search.add_argument("--limit", type=int, default=20)
+    p_search.set_defaults(func=cmd_search)
+
+    p_counts = sub.add_parser("counts")
+    p_counts.set_defaults(func=cmd_counts)
+
+    args = parser.parse_args()
+    db_path = _db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = db.connect(db_path)
+    return args.func(conn, args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

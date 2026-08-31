@@ -72,9 +72,9 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                     body = f"{item.body}\n\n{mark}{draft.note}"
             conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
-                " source_url) VALUES (?,?,?,?,?,?)",
+                " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",
                 (run_id, now.isoformat(), item.bucket, item.title, body,
-                 item.source_url))
+                 item.source_url, item.excerpt))
             conn.commit()
         except Exception as exc:  # noqa: BLE001
             _end_run(conn, run_id, False, cost=spent,
