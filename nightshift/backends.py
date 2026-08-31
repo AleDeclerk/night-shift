@@ -173,8 +173,22 @@ PROBE_COMMANDS = {
                "--approval-mode", "yolo"],
     "cursor": ["cursor-agent", "-p", PROBE_PROMPT, "--output-format", "json",
                "--approve-mcps", "--force"],
-    "ollama": ["ollama", "run", "qwen3.8:27b-mlx", PROBE_PROMPT],
+    # `ollama run` only writes text. The DeepSeek Harness gives the same local
+    # model a sandbox, shell tools and a permission policy, and the patch of
+    # this machine already points it at Ollama. Measured on 2026-08-31: it
+    # answered one word in 56 seconds, against about 3 for Claude.
+    "ollama": ["dsh", "--profile", "headless", PROBE_PROMPT],
 }
+
+# Ollama authenticates nobody, but the OpenAI-compatible client that the
+# harness uses refuses to start without a value. This buys no service and it
+# meters nothing: the call never leaves this Mac. It is not the API key that
+# rule 1 of the specification forbids.
+PROBE_ENV = {"ollama": {"OLLAMA_API_KEY": "ollama"}}
+
+
+def probe_env(engine: str) -> dict:
+    return dict(PROBE_ENV.get(engine, {}))
 PROBE_TIMEOUT = 180
 
 # Case-insensitive markers of a call that failed, even when the process exits
