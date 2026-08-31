@@ -1,87 +1,361 @@
-<!doctype html><meta charset="utf-8">
-<title>night-shift</title>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIGHT SHIFT — parte del turno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;500;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
- body { font: 16px/1.6 ui-serif, Georgia, serif; max-width: 46rem;
-        margin: 3rem auto; padding: 0 1.2rem; color: #23201c; }
- h1 { font-size: 1.8rem; margin: 0 0 2rem; }
- h2 { font: 600 11px/1 ui-sans-serif, system-ui; letter-spacing: .1em;
-      text-transform: uppercase; color: #6b645c; margin: 2.5rem 0 .8rem; }
- .card { border: 1px solid #e3ded6; border-radius: 8px; padding: .9rem 1.1rem;
-         margin-bottom: .7rem; }
- .quota { float: right; font: 12px ui-sans-serif, system-ui; color: #6b645c; }
- .why { color: #6b645c; }
- a { color: #9a5b2a; }
- .failed { border-color: #b3492e; }
- details summary { cursor: pointer; color: #6b645c;
-                   font: 600 11px/1 ui-sans-serif, system-ui;
-                   letter-spacing: .1em; text-transform: uppercase; }
- form { margin-top: .8rem; }
- input { width: 70%; padding: .5rem; border: 1px solid #e3ded6;
-         border-radius: 6px; font: inherit; }
- @media (prefers-color-scheme: dark) {
-   body { background: #16130f; color: #e9e3da; }
-   .card { border-color: #2e2921; }
-   input { border-color: #2e2921; background: #1d1914; color: #e9e3da; }
-   button { background: #2e2921; color: #e9e3da; border: 1px solid #3d362c;
-            border-radius: 6px; padding: .45rem .9rem; }
-   .why, .quota, details summary { color: #9c9389; }
-   a { color: #d98f52; }
- }
+:root{
+  --ink:#12100e; --ink-soft:#2a2622; --paper:#ddd7ca; --paper-bright:#ebe6da;
+  --paper-dim:#c8c1b2; --stamp:#8f2018; --rule:#12100e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--ink)}
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:"Courier Prime",ui-monospace,monospace;font-size:15px;line-height:1.55;
+  padding:0 0 6rem;position:relative;overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;opacity:.55;animation:grain .48s steps(3) infinite;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:radial-gradient(ellipse 120% 85% at 50% 45%,transparent 45%,rgba(18,16,14,.28) 88%,rgba(18,16,14,.52) 100%);
+  animation:flicker 5.5s ease-in-out infinite;
+}
+@keyframes grain{0%,100%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}
+  50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-2%)}}
+@keyframes flicker{0%,100%{opacity:1}42%{opacity:.94}44%{opacity:1}77%{opacity:.96}}
+@media (prefers-reduced-motion:reduce){
+  body::before,body::after{animation:none}.gear{animation:none!important}
+}
+.sheet{max-width:60rem;margin:0 auto;padding:0 1.5rem}
+
+header{border-bottom:6px double var(--rule);padding:3.5rem 0 1.6rem;text-align:center}
+.reel{display:flex;align-items:center;justify-content:center;gap:1.6rem}
+.gear{flex:none}
+.gear--slow{width:104px;height:104px;animation:spin 16s linear infinite}
+.gear--fast{width:72px;height:72px;margin-top:2.2rem;animation:spin 9s linear infinite reverse}
+@media (max-width:640px){.gear--slow{width:56px;height:56px}.gear--fast{width:40px;height:40px}}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:clamp(2.6rem,9vw,5.2rem);line-height:.86;letter-spacing:.06em;text-transform:uppercase}
+h1 .thin{display:block;font-weight:300;font-size:.31em;letter-spacing:.55em;
+  margin-top:.85rem;text-indent:.55em}
+.tagline{font-family:"Playfair Display",serif;font-style:italic;font-weight:700;
+  font-size:1.05rem;margin-top:1.5rem;color:var(--ink-soft)}
+
+.timecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));
+  border:3px solid var(--rule);background:var(--paper-bright);margin:2.2rem 0 1.5rem;position:relative}
+.timecard::before,.timecard::after{content:"";position:absolute;top:0;bottom:0;width:14px;
+  background-image:radial-gradient(circle,var(--paper) 3.2px,transparent 3.4px);
+  background-size:14px 22px;background-position:center}
+.timecard::before{left:-3px}.timecard::after{right:-3px}
+.cell{padding:1rem 1.2rem;border-right:1px dashed var(--ink-soft)}
+.cell:last-child{border-right:0}
+.cell .k{font-family:"Oswald",sans-serif;font-weight:500;font-size:.62rem;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft)}
+.cell .v{font-size:1.2rem;font-weight:700;margin-top:.22rem}
+.cell .v.small{font-size:.92rem;font-weight:400}
+.gauge{height:12px;border:2px solid var(--rule);margin-top:.55rem;position:relative;background:var(--paper)}
+.gauge span{position:absolute;inset:0 auto 0 0;
+  background:repeating-linear-gradient(45deg,var(--ink) 0 4px,transparent 4px 8px);
+  border-right:2px solid var(--ink)}
+
+.alarm{border:3px solid var(--stamp);background:var(--paper-bright);padding:1rem 1.2rem;margin-bottom:2rem}
+.alarm b{font-family:"Oswald",sans-serif;letter-spacing:.14em;text-transform:uppercase;
+  font-size:.72rem;color:var(--stamp);display:block;margin-bottom:.3rem}
+
+.card-title{text-align:center;margin:3.2rem 0 1.6rem;padding:1.1rem .8rem;
+  border-top:3px solid var(--rule);border-bottom:3px solid var(--rule);
+  position:relative;background:var(--paper-bright)}
+.card-title h2{font-family:"Playfair Display",serif;font-weight:900;
+  font-size:clamp(1.25rem,4vw,1.9rem);letter-spacing:.05em;text-transform:uppercase}
+.card-title .count{font-family:"Oswald",sans-serif;font-weight:300;font-size:.66rem;
+  letter-spacing:.3em;text-transform:uppercase;color:var(--ink-soft);margin-top:.4rem}
+.card-title::before,.card-title::after{content:"✦";position:absolute;top:50%;
+  transform:translateY(-50%);font-size:.75rem;color:var(--ink-soft)}
+.card-title::before{left:1rem}.card-title::after{right:1rem}
+
+.belt{border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);
+  background:repeating-linear-gradient(90deg,var(--ink) 0 9px,transparent 9px 20px);
+  height:7px;margin:0 0 1.6rem}
+.slug{border:2px solid var(--rule);background:var(--paper-bright);
+  padding:1.15rem 1.35rem;margin-bottom:1.1rem;position:relative;box-shadow:5px 5px 0 var(--ink)}
+.slug .no{position:absolute;top:-2px;right:-2px;font-family:"Oswald",sans-serif;
+  font-weight:700;font-size:.6rem;letter-spacing:.16em;background:var(--ink);
+  color:var(--paper);padding:.18rem .55rem}
+.slug h3{font-family:"Oswald",sans-serif;font-weight:500;font-size:1rem;
+  letter-spacing:.02em;line-height:1.3;padding-right:6rem}
+.slug .why{font-family:"Playfair Display",serif;font-style:italic;margin-top:.6rem;
+  color:var(--ink-soft);font-size:.96rem;line-height:1.5}
+.slug .foot{display:flex;gap:1.1rem;align-items:center;flex-wrap:wrap;
+  margin-top:.9rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft)}
+.stamp{font-family:"Oswald",sans-serif;font-weight:700;font-size:.58rem;
+  letter-spacing:.19em;text-transform:uppercase;border:2px solid var(--stamp);
+  color:var(--stamp);padding:.2rem .55rem;transform:rotate(-2.4deg)}
+.stamp--bad{border-color:var(--ink);color:var(--paper);background:var(--ink);transform:rotate(1.6deg)}
+a.src{font-family:"Oswald",sans-serif;font-size:.63rem;letter-spacing:.19em;
+  text-transform:uppercase;color:var(--ink);text-underline-offset:4px}
+a.src:hover{color:var(--stamp)}
+.empty{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
+  text-align:center;padding:1.2rem}
+
+details{border:2px solid var(--ink-soft);background:var(--paper-bright);margin-bottom:1.1rem}
+summary{cursor:pointer;padding:.8rem 1.2rem;font-family:"Oswald",sans-serif;
+  font-weight:500;font-size:.7rem;letter-spacing:.24em;text-transform:uppercase}
+details[open] summary{border-bottom:1px dashed var(--ink-soft)}
+.discard{padding:.75rem 1.25rem;border-bottom:1px dotted var(--paper-dim);font-size:.88rem}
+.discard:last-child{border-bottom:0}
+.discard b{font-family:"Oswald",sans-serif;font-weight:500;display:block;font-size:.9rem}
+.discard span{color:var(--ink-soft);font-style:italic;font-family:"Playfair Display",serif}
+
+.machines{display:grid;grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr));gap:1.1rem}
+.engine{border:3px solid var(--rule);background:var(--paper-bright);padding:1.15rem}
+.engine.on{box-shadow:6px 6px 0 var(--ink)}
+.engine.off{opacity:.62}
+.engine .name{font-family:"Oswald",sans-serif;font-weight:700;font-size:1.1rem;
+  letter-spacing:.09em;text-transform:uppercase}
+.engine .sub{font-size:.74rem;color:var(--ink-soft);margin-top:.15rem}
+.lamp{display:inline-block;width:11px;height:11px;border:2px solid var(--ink);
+  border-radius:50%;margin-right:.45rem;vertical-align:-1px}
+.lamp.lit{background:var(--ink);box-shadow:0 0 0 3px var(--paper),0 0 0 5px var(--ink)}
+.lamp.unknown{background:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 4px)}
+.caps{list-style:none;margin-top:.95rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft)}
+.caps li{display:flex;justify-content:space-between;gap:.6rem;font-size:.72rem;padding:.24rem 0}
+.caps .yes{font-weight:700}
+.caps .no{color:var(--ink-soft);text-decoration:line-through}
+.caps .unk{color:var(--ink-soft);font-style:italic}
+.lever{display:block;width:100%;margin-top:1rem;padding:.6rem;font-family:"Oswald",sans-serif;
+  font-weight:700;font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);border:2px solid var(--ink);cursor:pointer}
+.lever[disabled]{background:transparent;color:var(--ink-soft);border-style:dashed;cursor:wait}
+.note{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
+  margin-top:1.1rem;text-align:center;font-size:.94rem}
+
+#signin{border:3px solid var(--stamp);background:var(--paper-bright);
+  padding:1.2rem;margin-top:1.2rem}
+#signin .head{font-family:"Oswald",sans-serif;font-weight:700;font-size:.68rem;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--stamp)}
+#signin .msg{margin-top:.5rem}
+#signin a{display:inline-block;margin-top:.8rem;font-family:"Oswald",sans-serif;
+  font-weight:700;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);padding:.6rem 1.2rem;text-decoration:none}
+#signin a:hover{background:var(--stamp)}
+#signin .state{font-size:.72rem;color:var(--ink-soft);margin-top:.7rem}
+
+form.order{display:flex;gap:.7rem;margin-top:1rem;flex-wrap:wrap}
+form.order input{flex:1 1 18rem;font-family:"Courier Prime",monospace;font-size:.95rem;
+  background:var(--paper-bright);border:2px solid var(--ink);padding:.7rem .85rem;color:var(--ink)}
+form.order input::placeholder{color:var(--ink-soft);font-style:italic}
+form.order button{font-family:"Oswald",sans-serif;font-weight:700;font-size:.66rem;
+  letter-spacing:.22em;text-transform:uppercase;background:var(--ink);color:var(--paper);
+  border:2px solid var(--ink);padding:.7rem 1.5rem;cursor:pointer}
+form.order button:hover{background:var(--stamp);border-color:var(--stamp)}
+.queued{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
+  padding:.3rem 0;border-bottom:1px dotted var(--paper-dim)}
+
+footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
+  text-align:center;font-family:"Playfair Display",serif;font-style:italic;
+  color:var(--ink-soft);font-size:.9rem}
 </style>
-<span class="quota">last good cycle: {{ last_good }}<br>weekly spend: {{ spent }} of {{ ceiling }} USD</span>
-<h1>Brief</h1>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <div class="reel">
+    <svg class="gear gear--slow" viewBox="0 0 100 100" aria-hidden="true">
+      <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
+      <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
+    </svg>
+    <h1>Night<br>Shift<span class="thin">parte del turno</span></h1>
+    <svg class="gear gear--fast" viewBox="0 0 100 100" aria-hidden="true">
+      <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
+      <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
+    </svg>
+  </div>
+  <p class="tagline">La máquina trabajó mientras usted dormía.</p>
+</header>
+
+<div class="timecard">
+  <div class="cell">
+    <div class="k">Último turno cerrado</div>
+    <div class="v small">{{ last_good }}</div>
+  </div>
+  <div class="cell">
+    <div class="k">Consumo semanal</div>
+    <div class="v">{{ spent }} / {{ ceiling }}</div>
+    <div class="gauge"><span style="width:{{ (spent / ceiling * 100) if ceiling else 0 }}%"></span></div>
+  </div>
+  <div class="cell">
+    <div class="k">Motor del correo</div>
+    <div class="v">CLAUDE</div>
+    <div class="v small">único con conector</div>
+  </div>
+</div>
+
 {% if error %}
-<div class="card failed"><strong>The last cycle failed.</strong>
-  <div class="why">{{ error }}</div></div>
+<div class="alarm"><b>El último turno falló</b>{{ error }}</div>
 {% endif %}
 
-<h2>Needs you ({{ needs_you|length + jobs_waiting|length }})</h2>
+<div class="card-title">
+  <h2>Requiere su mano</h2>
+  <div class="count">{{ needs_you|length + jobs_waiting|length }} · pendiente de firma</div>
+</div>
+<div class="belt"></div>
+
 {% for i in needs_you %}
-  <div class="card"><strong>{{ i["title"] }}</strong>
-    <div class="why">{{ i["body"] }}</div>
-    <a href="/open/{{ i['id'] }}">source</a></div>
+<article class="slug">
+  <span class="no">Pieza {{ "%02d"|format(loop.index) }}</span>
+  <h3>{{ i["title"] }}</h3>
+  <p class="why">{{ i["body"] }}</p>
+  <div class="foot">
+    <span class="stamp">Correo</span>
+    <a class="src" href="/open/{{ i['id'] }}">Ver original ↗</a>
+  </div>
+</article>
 {% endfor %}
 {% for j in jobs_waiting %}
-  <div class="card"><strong>{{ j["prompt"] }}</strong>
-    <div class="why">{{ j["question"] }}</div></div>
+<article class="slug">
+  <span class="no">Encargo</span>
+  <h3>{{ j["prompt"] }}</h3>
+  <p class="why">{{ j["question"] }}</p>
+  <div class="foot"><span class="stamp stamp--bad">Máquina detenida</span></div>
+</article>
 {% endfor %}
-{% if not needs_you and not jobs_waiting %}<p>Nothing needs you.</p>{% endif %}
+{% if not needs_you and not jobs_waiting %}
+<p class="empty">Nada requiere su mano.</p>
+{% endif %}
 
-<h2>Done ({{ done|length + jobs_done|length }})</h2>
-{% for i in done %}<div class="card">{{ i["title"] }}</div>
-{% endfor %}
+<div class="card-title">
+  <h2>Terminado</h2>
+  <div class="count">{{ done|length + jobs_done|length }} · sin intervención</div>
+</div>
+{% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
 {% for j in jobs_done %}
-  <div class="card"><strong>{{ j["prompt"] }}</strong>
-    <div class="why">{{ j["answer"] }}</div></div>
+<article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
 {% endfor %}
-{% if not done and not jobs_done %}<p>Nothing yet.</p>{% endif %}
+{% if not done and not jobs_done %}<p class="empty">Todavía nada.</p>{% endif %}
 
-<details><summary>Checked, no action ({{ no_action|length }})</summary>
-{% for i in no_action %}<div class="card">{{ i["title"] }}
-  <div class="why">{{ i["body"] }}</div></div>{% endfor %}
+<details>
+  <summary>▸ Revisado, sin acción ({{ no_action|length }})</summary>
+  {% for i in no_action %}
+  <div class="discard"><b>{{ i["title"] }}</b><span>{{ i["body"] }}</span></div>
+  {% endfor %}
 </details>
 
-<h2>Machine room</h2>
+<div class="card-title">
+  <h2>Sala de máquinas</h2>
+  <div class="count">Estado verificado · no declarado</div>
+</div>
+
+<div class="machines">
 {% for e in engines %}
-  <div class="card">
-    <strong>{{ e.label }}</strong> — {{ e.detail }}
-    <div class="why">
-      session:
-      {% if e.signed_in is none %}UNKNOWN{% elif e.signed_in %}YES{% else %}NO{% endif %}
-      · mail: {% if e.sees_mail %}YES{% else %}NO{% endif %}
-      · schema: {% if e.forced_schema %}YES{% else %}NO{% endif %}
+  <div class="engine {{ 'on' if e.signed_in else 'off' }}">
+    <div class="name">
+      <span class="lamp {% if e.signed_in is none %}unknown{% elif e.signed_in %}lit{% endif %}"></span>{{ e.label }}
     </div>
+    <div class="sub">{{ e.detail }}</div>
+    <ul class="caps">
+      <li><span>Instalado</span>
+        <span class="{{ 'yes' if e.installed else 'no' }}">{{ 'SÍ' if e.installed else 'NO' }}</span></li>
+      <li><span>Sesión activa</span>
+        {% if e.signed_in is none %}<span class="unk">SE DESCONOCE</span>
+        {% else %}<span class="{{ 'yes' if e.signed_in else 'no' }}">{{ 'SÍ' if e.signed_in else 'NO' }}</span>{% endif %}</li>
+      <li><span>Ve el correo</span>
+        <span class="{{ 'yes' if e.sees_mail else 'no' }}">{{ 'SÍ' if e.sees_mail else 'NO' }}</span></li>
+      <li><span>Esquema forzado</span>
+        <span class="{{ 'yes' if e.forced_schema else 'no' }}">{{ 'SÍ' if e.forced_schema else 'NO' }}</span></li>
+    </ul>
     {% if e.can_sign_in %}
-      <button data-engine="{{ e.name }}" class="signin">Sign in</button>
+    <button class="lever" data-engine="{{ e.name }}">Iniciar sesión</button>
     {% endif %}
   </div>
 {% endfor %}
-<p class="why">Claude is the only engine with a mail connector, so the mail work
-stays on it.</p>
+</div>
 
-<h2>Give a job</h2>
-{% for j in jobs_queued %}<div class="why">{{ j["prompt"] }}</div>{% endfor %}
-<form method="post" action="/jobs">
-  <input name="prompt" placeholder="What do you want done?">
-  <button type="submit">Queue it</button>
+<div id="signin" hidden>
+  <div class="head">Ingreso a Cursor</div>
+  <div class="msg"></div>
+  <a hidden target="_blank" rel="noopener noreferrer">Abrir el ingreso ↗</a>
+  <div class="state"></div>
+</div>
+
+<p class="note">Claude es el único motor con conector de correo, así que el
+triage y los borradores se quedan en él.</p>
+
+<div class="card-title">
+  <h2>Dar una orden</h2>
+  <div class="count">Entra en la cola del próximo turno</div>
+</div>
+
+{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}
+
+<form class="order" method="post" action="/jobs">
+  <input name="prompt" placeholder="¿Qué quiere que se haga?">
+  <button type="submit">A la cola</button>
 </form>
+
+<footer>Fin del parte.</footer>
+</div>
+
+<script>
+// El enlace de ingreso es una credencial: llega una vez, se usa y no se guarda.
+document.querySelectorAll(".lever[data-engine]").forEach(function (lever) {
+  lever.addEventListener("click", function () {
+    var box = document.getElementById("signin");
+    var msg = box.querySelector(".msg");
+    var link = box.querySelector("a");
+    var state = box.querySelector(".state");
+    lever.disabled = true;
+    lever.textContent = "Contactando…";
+    box.hidden = false;
+    link.hidden = true;
+    msg.textContent = "Pidiendo el enlace a Cursor. Nada se abre solo.";
+    state.textContent = "";
+
+    fetch("/machines/cursor/login", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.link) {
+          msg.textContent = "Cursor no devolvió un enlace. Pruebe otra vez.";
+          lever.disabled = false;
+          lever.textContent = "Iniciar sesión";
+          return;
+        }
+        link.href = data.link;
+        link.hidden = false;
+        msg.textContent = "Abra el enlace e inicie sesión en el sitio de Cursor. " +
+          "Sus datos se escriben allá, nunca en esta página.";
+        var timer = setInterval(function () {
+          fetch("/machines/cursor/login/status")
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
+              state.textContent = "estado: " + s.state + " · " + s.seconds + " s";
+              if (s.state !== "waiting") {
+                clearInterval(timer);
+                if (s.state === "done") { location.reload(); }
+                else { msg.textContent = "El intento terminó sin sesión (" + s.state + ")."; }
+                lever.disabled = false;
+                lever.textContent = "Iniciar sesión";
+              }
+            });
+        }, 3000);
+      })
+      .catch(function () {
+        msg.textContent = "No se pudo hablar con el servidor.";
+        lever.disabled = false;
+        lever.textContent = "Iniciar sesión";
+      });
+  });
+});
+</script>
+</body>
+</html>
