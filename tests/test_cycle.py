@@ -111,3 +111,29 @@ def test_work_already_done_survives_an_item_that_explodes(tmp_path):
     assert row["ok"] == 0
     assert "nonsense" in row["error"]
     assert row["cost_usd"] == 1.3  # the triage and the draft that did work
+
+
+def test_the_budget_stops_the_drafts_inside_one_cycle(tmp_path):
+    """The governor checked the ceiling only before the cycle started. A big
+    inbox on the first run could spend a whole week of quota in one go."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    items = [Item("needs_you", f"m{i}", "w", f"https://x/{i}") for i in range(5)]
+    stub = Stub(items=items, cost=0.5)  # each draft costs 0.8
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=2.0, workspace=tmp_path)
+    # 0.5 triage, then 0.8 and 0.8. The third draft never starts.
+    assert stub.drafted == 2
+
+
+def test_the_drafts_that_the_budget_stopped_are_visible(tmp_path):
+    """A draft that never got written must not look like a message that
+    needed no answer."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    items = [Item("needs_you", f"m{i}", "w", f"https://x/{i}") for i in range(5)]
+    cycle.run_once(conn, runner_module=Stub(items=items, cost=0.5),
+                   mail_module=Stub(items=items, cost=0.5),
+                   now=NOW, ceiling_usd=2.0, workspace=tmp_path)
+    titles = [r["title"] for r in conn.execute("SELECT title FROM items")]
+    assert any("budget" in t.lower() for t in titles), titles

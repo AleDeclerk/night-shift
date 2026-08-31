@@ -38,12 +38,19 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
 
     # Each item commits on its own. One exception in the middle used to throw
     # away every draft already written and every dollar already spent.
+    stopped_by_budget = 0
     for item in result.items:
         try:
             if item.bucket == "needs_you":
-                draft = mail_module.write_draft(runner_module, item,
-                                                cwd=workspace)
-                spent += draft.cost_usd
+                # The ceiling is checked here too, not only before the cycle.
+                # A large inbox on the first run would otherwise spend a whole
+                # week of quota before anything stopped it.
+                if decision.spent_usd + spent >= ceiling_usd:
+                    stopped_by_budget += 1
+                else:
+                    draft = mail_module.write_draft(runner_module, item,
+                                                    cwd=workspace)
+                    spent += draft.cost_usd
             conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
                 " source_url) VALUES (?,?,?,?,?,?)",
@@ -55,10 +62,23 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                      error=f"{item.title}: {exc}"[:400])
             return
 
-    # One job per cycle. Wrapped like the item loop above: a job that
-    # explodes must not lose the cost already spent on the mail triage.
+    if stopped_by_budget:
+        # A draft that never got written must not look like a message that
+        # needed no answer.
+        conn.execute(
+            "INSERT INTO items (run_id, created_at, bucket, title, body,"
+            " source_url) VALUES (?,?,?,?,?,?)",
+            (run_id, now.isoformat(), "needs_you",
+             f"The budget stopped {stopped_by_budget} drafts",
+             "The weekly ceiling was reached. Raise NIGHTSHIFT_CEILING_USD, or "
+             "wait for the next week, then run the cycle again.", ""))
+        conn.commit()
+
+    # One job for each cycle, and only with budget left. Wrapped like the item
+    # loop above: a job that explodes must not lose the cost already spent.
     try:
-        spent += jobs.run_next(conn, runner_module, workspace)
+        if decision.spent_usd + spent < ceiling_usd:
+            spent += jobs.run_next(conn, runner_module, workspace)
     except Exception as exc:  # noqa: BLE001
         _end_run(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400])
         return
