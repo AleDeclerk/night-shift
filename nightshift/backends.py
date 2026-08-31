@@ -194,9 +194,12 @@ PROBE_TIMEOUT = 180
 # Case-insensitive markers of a call that failed, even when the process exits
 # clean and prints something. Configuration lies; these strings are what the
 # real call says when it could not do the work.
-_FAILURE_MARKERS = (
+# One definition. `engines.py` reads this one instead of holding a copy: two
+# lists that must stay equal always drift apart, and nothing announces it.
+FAILURE_MARKERS = (
     "ineligibletier", "incompatible auth server", "not logged in",
     "failed to authenticate", "oauth access token has expired")
+_FAILURE_MARKERS = FAILURE_MARKERS   # the old private name, still used below
 
 # A detail is for a person reading a status page, never a place to carry a
 # login link. Strip the query string off any URL before it is kept.

@@ -139,3 +139,11 @@ def test_whitespace_only_text_is_treated_as_empty():
     data = engines.parse_job_answer("   \n  ")
     assert data["finished"] is False
     assert "question" in data
+
+
+def test_the_failure_markers_live_in_one_place():
+    """Two copies of the same list drift, and the drift never announces
+    itself. The day a fifth engine adds a new way to fail, one module would
+    learn it and the other would not."""
+    from nightshift import backends
+    assert engines.FAILURE_MARKERS is backends.FAILURE_MARKERS

@@ -18,10 +18,10 @@ DEFAULT_ENGINE = "claude"
 SETTINGS_KEY = "job_engine"
 
 # Case-insensitive markers of a call that failed, even when the process exits
-# clean and prints something that looks like an answer.
-_FAILURE_MARKERS = (
-    "ineligibletier", "incompatible auth server", "not logged in",
-    "failed to authenticate", "oauth access token has expired")
+# clean and prints something that looks like an answer. Defined once, in
+# backends, because two copies drift and the drift stays silent.
+FAILURE_MARKERS = backends.FAILURE_MARKERS
+_FAILURE_MARKERS = FAILURE_MARKERS
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 _BRACE_RE = re.compile(r"\{.*\}", re.DOTALL)
