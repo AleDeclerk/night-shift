@@ -35,7 +35,7 @@ def test_the_page_shows_the_three_buckets(tmp_path):
     assert "/open/1" in body
     # The page speaks Spanish: it is a personal tool and one person reads it.
     # The code, the commits and the documents stay in English.
-    assert "Requiere su mano" in body
+    assert "Pendiente" in body
 
 
 def test_a_new_job_goes_to_the_queue(tmp_path):
