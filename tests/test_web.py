@@ -338,3 +338,16 @@ def test_the_bar_says_who_does_what(tmp_path):
     assert "Motor del correo" in body
     assert "Motor que redacta" in body
     assert "Motor de tareas" in body
+
+
+def test_the_room_shows_the_three_roles_together(tmp_path):
+    """Fetching, writing and doing jobs are three different jobs, and only the
+    first one is locked. Showing the locked one says why it cannot move."""
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "Baja y guarda el correo" in room
+    assert "Redacta la respuesta" in room
+    assert "Hace los encargos" in room
+    assert "<select disabled>" in room     # the mail fetch cannot be moved

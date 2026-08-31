@@ -347,6 +347,20 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
   margin-top:.15rem;line-height:1.25}
 .cell--eng .v{font-family:"Oswald",sans-serif;font-weight:700;letter-spacing:.06em;
   font-size:.95rem}
+
+dialog#room .role{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;
+  margin-bottom:.3rem}
+dialog#room .role label{font-family:"Oswald",sans-serif;font-size:.6rem;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--ink);
+  min-width:13rem;font-weight:500}
+dialog#room .role select{min-width:9rem}
+dialog#room .role--fixed select{opacity:.55;border-style:dashed;cursor:not-allowed}
+dialog#room .role .fixed{font-family:"Oswald",sans-serif;font-size:.55rem;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);
+  border:2px dashed var(--ink-soft);padding:.3rem .6rem}
+dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
+  font-size:.76rem}
+@media (max-width:700px){dialog#room .roomassign .note{margin-left:0}}
 </style>
 </head>
 <body>
@@ -539,32 +553,38 @@ dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
 
     <div class="roomassign">
       <h3>Quién hace cada trabajo</h3>
-<div class="assign">
-    <div class="assign">
-  <form method="post" action="/machines/engine">
-    <label for="job-engine">Motor de los encargos</label>
-    <select id="job-engine" name="name">
-      {% for name in job_engines %}
-      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">El correo se queda en Claude: es el único motor con conector. El
-  motor local es gratis y lento.</p>
-  <form method="post" action="/machines/mail-engine">
-    <label for="mail-engine">Motor que redacta</label>
-    <select id="mail-engine" name="name">
-      {% for name in mail_engines %}
-      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
-  conector. Otro motor sólo escribe el texto de la respuesta.</p>
-</div>
-  </div>
+
+      <form class="role role--fixed">
+        <label>Baja y guarda el correo</label>
+        <select disabled><option>CLAUDE</option></select>
+        <span class="fixed">fijo</span>
+      </form>
+      <p class="note">Es el único motor con conector de Gmail. Google sólo
+      responde a clientes que registró, así que este trabajo no se puede mover.</p>
+
+      <form class="role" method="post" action="/machines/mail-engine">
+        <label for="mail-engine">Redacta la respuesta</label>
+        <select id="mail-engine" name="name">
+          {% for name in mail_engines %}
+          <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Fijar</button>
+      </form>
+      <p class="note">Escribe el texto y nada más: Claude lo guarda como
+      borrador. Con el motor local, el contenido no sale de esta Mac.</p>
+
+      <form class="role" method="post" action="/machines/engine">
+        <label for="job-engine">Hace los encargos</label>
+        <select id="job-engine" name="name">
+          {% for name in job_engines %}
+          <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Fijar</button>
+      </form>
+      <p class="note">Las tareas de la cola. No tocan el correo, así que
+      cualquier motor sirve.</p>
     </div>
   </div>
 </dialog>
