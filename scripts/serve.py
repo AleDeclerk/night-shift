@@ -8,7 +8,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 from nightshift import db, web  # noqa: E402
 
 HOME = pathlib.Path.home() / ".night-shift"
-CEILING_USD = 45.0
+CEILING_USD = 20.0
 
 if __name__ == "__main__":
     HOME.mkdir(exist_ok=True)

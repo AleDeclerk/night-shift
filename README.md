@@ -18,7 +18,7 @@ Design stage. Read [the design document](docs/specs/2026-08-30-design.md).
 
 ## Run it
 
-Install the two daily runs:
+Install the daily run at 06:30, with a ceiling of 20 USD of equivalent spend for the week:
 
     cp scripts/com.aledeclerk.nightshift.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.aledeclerk.nightshift.plist
