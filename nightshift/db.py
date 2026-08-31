@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS probes (
   cost_usd REAL NOT NULL DEFAULT 0,
   detail   TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 """
 
 

@@ -76,9 +76,10 @@ def test_the_cycle_runs_one_job_and_adds_its_cost(tmp_path, monkeypatch):
     conn = db.connect(tmp_path / "s.db")
     stub = Stub(cost=0.5)
 
-    def fake_run_next(conn_arg, runner_module, workspace):
+    def fake_run_next(conn_arg, runner_module, workspace, engine=None):
         assert conn_arg is conn
         assert runner_module is stub
+        assert engine == "claude"  # nothing stored yet, so the default holds
         return 0.4
 
     monkeypatch.setattr(cycle.jobs, "run_next", fake_run_next)

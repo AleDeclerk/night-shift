@@ -2,7 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import jobs, quota
+from nightshift import engines, jobs, quota
 
 
 def _start_run(conn, now, kind) -> int:
@@ -97,7 +97,8 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # loop above: a job that explodes must not lose the cost already spent.
     try:
         if decision.spent_usd + spent < ceiling_usd:
-            spent += jobs.run_next(conn, runner_module, workspace)
+            spent += jobs.run_next(conn, runner_module, workspace,
+                                   engine=engines.get_engine(conn))
     except Exception as exc:  # noqa: BLE001
         _end_run(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400])
         return

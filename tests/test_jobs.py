@@ -1,4 +1,6 @@
-from nightshift import db, jobs
+import pytest
+
+from nightshift import db, engines, jobs
 
 
 class FakeRunner:
@@ -97,3 +99,59 @@ def test_a_stopped_job_is_not_picked_again(tmp_path):
     job_id = jobs.add(conn, "one")
     jobs.stop_and_ask(conn, job_id, "why?")
     assert jobs.next_queued(conn) is None
+
+
+# --- which engine runs a job -------------------------------------------
+
+def test_a_non_claude_engine_uses_engines_run_not_the_claude_runner(
+        tmp_path, monkeypatch):
+    job_id = None
+    calls = []
+
+    def fake_engines_run(prompt, *, engine, cwd, timeout=900):
+        calls.append((prompt, engine, cwd))
+        return engines.EngineRun(True, text='{"finished": true, '
+                                             '"summary": "done"}', cost_usd=0.0)
+
+    monkeypatch.setattr(jobs.engines, "run", fake_engines_run)
+
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    fake_claude_runner = FakeRunner({"finished": True, "summary": "unused"})
+    jobs.run_next(conn, fake_claude_runner, tmp_path, engine="ollama")
+
+    assert len(calls) == 1
+    assert calls[0][1] == "ollama"
+    assert fake_claude_runner.calls == []  # the claude runner was never used
+    assert jobs.get(conn, job_id)["state"] == "done"
+    assert jobs.get(conn, job_id)["answer"] == "done"
+
+
+def test_the_default_engine_still_uses_the_claude_runner_with_a_schema(
+        tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "one")
+    fake = FakeRunner({"finished": True, "summary": "done"})
+    jobs.run_next(conn, fake, tmp_path)  # no engine given: falls to default
+    assert len(fake.calls) == 1
+    _, kw = fake.calls[0]
+    assert kw["schema"] == jobs.SCHEMA
+
+
+# --- remembering the engine choice --------------------------------------
+
+def test_get_engine_gives_claude_when_nothing_is_stored(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    assert engines.get_engine(conn) == "claude"
+
+
+def test_set_engine_then_get_engine_round_trips(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    engines.set_engine(conn, "ollama")
+    assert engines.get_engine(conn) == "ollama"
+
+
+def test_set_engine_gemini_is_refused(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    with pytest.raises(ValueError):
+        engines.set_engine(conn, "gemini")

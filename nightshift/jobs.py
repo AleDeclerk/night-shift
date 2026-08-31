@@ -4,6 +4,8 @@ import json
 import pathlib
 import sqlite3
 
+from nightshift import engines
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -24,6 +26,16 @@ Answer with three fields. Set `finished` to true only when the work is done.
 If you need a decision that only Alejandro can give, set `finished` to false
 and put the one question in `question`. Do not guess and do not choose for him.
 Put a short report of what you did in `summary`."""
+
+# Only Claude can force the schema above. Every other engine gets the same
+# shape asked in plain words instead, and a tolerant parse on the way back.
+JSON_SHAPE_HINT = """
+
+Answer with a single JSON object and nothing else before or after it, shaped
+exactly like this:
+{"finished": true, "question": "", "summary": "..."}
+Set `finished` to true or false, as described above. Leave `question` empty
+unless `finished` is false."""
 
 
 def add(conn: sqlite3.Connection, prompt: str) -> int:
@@ -64,13 +76,18 @@ def fail(conn: sqlite3.Connection, job_id: int, error: str) -> None:
     conn.commit()
 
 
-def run_next(conn, runner_module, workspace) -> float:
+def run_next(conn, runner_module, workspace,
+             engine: str = engines.DEFAULT_ENGINE) -> float:
     """Run the oldest queued job. It returns what the run spent.
 
     A failed job goes to 'failed', never back to 'queued': the scheduler would
     retry the same failure twice a day and burn the weekly quota.
     The `question` column carries whatever the page must show, so it holds the
     question of a stopped job and the error of a failed one.
+
+    `claude` keeps the original path, with the schema forced by the runner.
+    Every other engine goes through `nightshift.engines`, which asks for the
+    same shape in words and reads whatever comes back with a tolerant parse.
     """
     job = next_queued(conn)
     if job is None:
@@ -84,16 +101,26 @@ def run_next(conn, runner_module, workspace) -> float:
     conn.commit()
 
     prompt = PROMPT.format(job=job["prompt"], workdir=workdir)
-    r = runner_module.run(prompt, cwd=workdir, schema=SCHEMA)
-    if not r.ok:
-        fail(conn, job_id, r.error)
-        return r.cost_usd
 
-    try:
-        data = json.loads(r.text)
-    except json.JSONDecodeError:
-        fail(conn, job_id, r.error or f"The answer was not JSON: {r.text[:200]}")
-        return r.cost_usd
+    if engine == "claude":
+        r = runner_module.run(prompt, cwd=workdir, schema=SCHEMA)
+        if not r.ok:
+            fail(conn, job_id, r.error)
+            return r.cost_usd
+        try:
+            data = json.loads(r.text)
+        except json.JSONDecodeError:
+            fail(conn, job_id,
+                 r.error or f"The answer was not JSON: {r.text[:200]}")
+            return r.cost_usd
+        cost = r.cost_usd
+    else:
+        er = engines.run(prompt + JSON_SHAPE_HINT, engine=engine, cwd=workdir)
+        if not er.ok:
+            fail(conn, job_id, er.error)
+            return er.cost_usd
+        data = engines.parse_job_answer(er.text)
+        cost = er.cost_usd
 
     if not data.get("finished"):
         question = data.get("question") or \
@@ -104,4 +131,4 @@ def run_next(conn, runner_module, workspace) -> float:
         conn.execute("UPDATE jobs SET answer=? WHERE id=?",
                      (data.get("summary"), job_id))
         conn.commit()
-    return r.cost_usd
+    return cost

@@ -1,0 +1,133 @@
+"""Run one prompt on the engine that the user chose.
+
+Only Claude can force a schema, so every other engine gets the shape asked in
+words and a tolerant parse. A local model that answers well but formats badly
+must not lose its work.
+"""
+import dataclasses
+import json
+import os
+import re
+import subprocess
+
+from nightshift import backends
+
+JOB_ENGINES = ("claude", "cursor", "ollama")   # gemini cannot run
+DEFAULT_ENGINE = "claude"
+
+SETTINGS_KEY = "job_engine"
+
+# Case-insensitive markers of a call that failed, even when the process exits
+# clean and prints something that looks like an answer.
+_FAILURE_MARKERS = (
+    "ineligibletier", "incompatible auth server", "not logged in",
+    "failed to authenticate", "oauth access token has expired")
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+_BRACE_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+@dataclasses.dataclass(frozen=True)
+class EngineRun:
+    ok: bool
+    text: str = ""
+    cost_usd: float = 0.0
+    error: str | None = None
+
+
+def command_for(engine: str, prompt: str) -> list[str] | None:
+    """The exact command line for one engine, or None when it cannot run."""
+    if engine == "claude":
+        return ["claude", "-p", prompt, "--output-format", "json"]
+    if engine == "cursor":
+        return ["cursor-agent", "-p", prompt, "--output-format", "json",
+                 "--force"]
+    if engine == "ollama":
+        return ["dsh", "--profile", "headless", prompt]
+    return None
+
+
+def _read_answer(raw: str) -> tuple[str, float]:
+    """Try json.loads, then `result`, then `response`, then the raw text."""
+    raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw, 0.0
+    if not isinstance(data, dict):
+        return raw, 0.0
+    text = data.get("result") or data.get("response") or raw
+    cost = float(data.get("total_cost_usd") or 0.0)
+    return text, cost
+
+
+def run(prompt: str, *, engine: str, cwd, timeout: int = 900) -> EngineRun:
+    """Run one headless turn on `engine`. Never raises."""
+    command = command_for(engine, prompt)
+    if command is None:
+        return EngineRun(False, error=f"Unknown engine: {engine}")
+
+    env = {**os.environ, **backends.probe_env(engine)}
+    try:
+        proc = subprocess.run(command, cwd=cwd, capture_output=True,
+                              text=True, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        return EngineRun(False, error=f"{engine} passed {timeout} seconds.")
+    except OSError as exc:
+        return EngineRun(False, error=f"Cannot start {command[0]}: {exc}")
+
+    raw = (proc.stdout or "") + (proc.stderr or "")
+    text, cost = _read_answer(raw)
+    if any(marker in text.lower() for marker in _FAILURE_MARKERS):
+        return EngineRun(False, text=text, cost_usd=cost, error=text[:400])
+    return EngineRun(True, text=text, cost_usd=cost)
+
+
+def _as_job_dict(candidate: str) -> dict | None:
+    try:
+        data = json.loads(candidate)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return data if isinstance(data, dict) and "finished" in data else None
+
+
+def parse_job_answer(text: str) -> dict:
+    """Tolerant read of a job answer that may not be clean JSON.
+
+    A local model very often wraps its JSON in ``` fences or a sentence, so
+    this tries progressively looser extractions before giving up. Work that
+    arrived as prose, with no JSON in it anywhere, is still work: it becomes a
+    finished job with that prose as its summary, never a dropped answer.
+    """
+    if not text or not text.strip():
+        return {"finished": False, "question": "The engine answered nothing."}
+
+    stripped = text.strip()
+    candidates = [stripped]
+    candidates += [m.group(1).strip() for m in _FENCE_RE.finditer(text)]
+    brace = _BRACE_RE.search(text)
+    if brace:
+        candidates.append(brace.group(0))
+
+    for candidate in candidates:
+        data = _as_job_dict(candidate)
+        if data is not None:
+            return data
+
+    return {"finished": True, "summary": stripped[:2000]}
+
+
+def get_engine(conn) -> str:
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (SETTINGS_KEY,)).fetchone()
+    return row["value"] if row is not None else DEFAULT_ENGINE
+
+
+def set_engine(conn, name: str) -> None:
+    if name not in JOB_ENGINES:
+        raise ValueError(f"Unknown engine: {name}")
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (SETTINGS_KEY, name))
+    conn.commit()
