@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import backends, jobs, quota, signin
+from nightshift import backends, engines, jobs, quota, signin
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -52,6 +52,11 @@ def _when(iso: str) -> str:
         return iso
 
 
+# The template needs the same date format for a probe row. One function, one
+# place: `_when` stays the only formatter, reached here as a filter.
+TEMPLATES.env.filters["when"] = _when
+
+
 def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
     """`engine_source` lets a test inject engines. Without it the page runs the
     cheap checks, which take about five seconds when the cache is cold."""
@@ -88,7 +93,9 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "jobs_queued": job_rows("queued", "running"),
             "jobs_done": job_rows("done"),
             "engines": backends.check_all(),
-            "probes": backends.last_probes(conn)})
+            "probes": backends.last_probes(conn),
+            "job_engine": engines.get_engine(conn),
+            "job_engines": engines.JOB_ENGINES})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
@@ -140,5 +147,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         backends.invalidate()
         return {"ok": result.ok, "can_mail": result.can_mail,
                 "cost_usd": result.cost_usd, "detail": result.detail}
+
+    @app.post("/machines/engine")
+    def choose_engine(name: str = Form(...)):
+        try:
+            engines.set_engine(conn, name)
+        except ValueError:
+            pass          # an unknown name changes nothing
+        return RedirectResponse("/", status_code=303)
 
     return app

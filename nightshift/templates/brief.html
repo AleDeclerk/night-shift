@@ -139,6 +139,12 @@ details[open] summary{border-bottom:1px dashed var(--ink-soft)}
 .note{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
   margin-top:1.1rem;text-align:center;font-size:.94rem}
 
+.probe{margin-top:.85rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft);
+  font-family:"Courier Prime",monospace;font-size:.68rem;color:var(--ink-soft);line-height:1.5}
+.probe .ok{font-weight:700;color:var(--ink)}
+.probe .bad{font-weight:700;color:var(--stamp)}
+.probe .detail{display:block;margin-top:.2rem;font-style:italic}
+
 #signin{border:3px solid var(--stamp);background:var(--paper-bright);
   padding:1.2rem;margin-top:1.2rem}
 #signin .head{font-family:"Oswald",sans-serif;font-weight:700;font-size:.68rem;
@@ -149,6 +155,15 @@ details[open] summary{border-bottom:1px dashed var(--ink-soft)}
   background:var(--ink);color:var(--paper);padding:.6rem 1.2rem;text-decoration:none}
 #signin a:hover{background:var(--stamp)}
 #signin .state{font-size:.72rem;color:var(--ink-soft);margin-top:.7rem}
+
+.assign{border:3px solid var(--rule);background:var(--paper-bright);padding:1.15rem 1.35rem;
+  margin:1.6rem 0}
+.assign select{font-family:"Courier Prime",monospace;font-size:.9rem;color:var(--ink);
+  background:var(--paper);border:2px solid var(--ink);padding:.5rem .7rem}
+.assign button{font-family:"Oswald",sans-serif;font-weight:700;font-size:.66rem;
+  letter-spacing:.22em;text-transform:uppercase;background:var(--ink);color:var(--paper);
+  border:2px solid var(--ink);padding:.55rem 1.1rem;margin-left:.6rem;cursor:pointer}
+.assign button:hover{background:var(--stamp);border-color:var(--stamp)}
 
 form.order{display:flex;gap:.7rem;margin-top:1rem;flex-wrap:wrap}
 form.order input{flex:1 1 18rem;font-family:"Courier Prime",monospace;font-size:.95rem;
@@ -274,9 +289,22 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
       <li><span>Esquema forzado</span>
         <span class="{{ 'yes' if e.forced_schema else 'no' }}">{{ 'SÍ' if e.forced_schema else 'NO' }}</span></li>
     </ul>
+    {% set p = probes.get(e.name) %}
+    <div class="probe">
+      {% if not p %}
+      SIN PRUEBA REAL
+      {% else %}
+      {{ p['at']|when }} ·
+      {% if p['can_mail'] %}<span class="ok">PUDO LEER EL CORREO</span>
+      {% else %}<span class="bad">NO PUDO</span>{% endif %}
+      {% if p['cost_usd'] and p['cost_usd'] > 0 %}· {{ '%.2f'|format(p['cost_usd']) }} USD{% endif %}
+      <span class="detail">{{ p['detail'] }}</span>
+      {% endif %}
+    </div>
     {% if e.can_sign_in %}
     <button class="lever" data-engine="{{ e.name }}">Iniciar sesión</button>
     {% endif %}
+    <button class="lever" data-probe="{{ e.name }}">{% if e.name == 'ollama' %}PROBAR DE VERDAD · GRATIS, LENTO{% else %}PROBAR DE VERDAD · ~0.80 USD{% endif %}</button>
   </div>
 {% endfor %}
 </div>
@@ -297,6 +325,20 @@ triage y los borradores se quedan en él.</p>
 </div>
 
 {% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}
+
+<div class="assign">
+  <form method="post" action="/machines/engine">
+    <label for="job-engine">Motor de los encargos</label>
+    <select id="job-engine" name="name">
+      {% for name in job_engines %}
+      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">El correo se queda en Claude: es el único motor con conector. El
+  motor local es gratis y lento.</p>
+</div>
 
 <form class="order" method="post" action="/jobs">
   <input name="prompt" placeholder="¿Qué quiere que se haga?">
@@ -353,6 +395,28 @@ document.querySelectorAll(".lever[data-engine]").forEach(function (lever) {
         msg.textContent = "No se pudo hablar con el servidor.";
         lever.disabled = false;
         lever.textContent = "Iniciar sesión";
+      });
+  });
+});
+
+// La prueba real gasta cupo de verdad, así que el botón nunca la dispara dos
+// veces sola: se apaga hasta que la respuesta vuelve.
+document.querySelectorAll(".lever[data-probe]").forEach(function (lever) {
+  var original = lever.textContent;
+  var name = lever.getAttribute("data-probe");
+  lever.addEventListener("click", function () {
+    lever.disabled = true;
+    lever.textContent = name === "ollama"
+      ? "PROBANDO… (hasta 3 minutos)"
+      : "PROBANDO…";
+
+    fetch("/machines/" + name + "/probe", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function () { location.reload(); })
+      .catch(function () {
+        lever.disabled = false;
+        lever.textContent = original;
+        alert("No se pudo hablar con el servidor.");
       });
   });
 });

@@ -193,3 +193,58 @@ def test_cancel_answers_even_with_no_flow(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     assert client.post("/machines/cursor/login/cancel").json()["state"] == "cancelled"
+
+
+def test_an_engine_with_no_probe_says_so(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "SIN PRUEBA REAL" in body
+
+
+def test_a_stored_probe_shows_what_the_engine_did(tmp_path):
+    from nightshift import backends
+    conn = db.connect(tmp_path / "s.db")
+    backends.save_probe(conn, backends.ProbeResult(
+        "cursor", False, False, 0.0,
+        "Incompatible auth server: does not support dynamic client registration"))
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "Incompatible auth server" in body
+    assert "NO PUDO" in body
+
+
+def test_the_probe_button_names_the_price(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "USD" in body and "GRATIS" in body
+
+
+def test_choosing_an_engine_is_remembered(tmp_path):
+    from nightshift import engines
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post("/machines/engine", data={"name": "ollama"},
+                follow_redirects=False)
+    assert engines.get_engine(conn) == "ollama"
+
+
+def test_an_unknown_engine_changes_nothing(tmp_path):
+    from nightshift import engines
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post("/machines/engine", data={"name": "nothing"},
+                follow_redirects=False)
+    assert engines.get_engine(conn) == "claude"
+
+
+def test_the_page_marks_the_chosen_engine(tmp_path):
+    from nightshift import engines
+    conn = db.connect(tmp_path / "s.db")
+    engines.set_engine(conn, "ollama")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert 'value="ollama" selected' in body or "selected" in body
