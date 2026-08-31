@@ -273,3 +273,46 @@ def test_save_draft_reports_an_empty_draft_as_a_failure():
                              cwd="/tmp")
     assert result.ok is False
     assert "empty" in result.note.lower()
+
+
+def test_a_preamble_never_reaches_the_draft():
+    """Measured on 2026-08-31: Cursor answered with a line of its own thinking
+    before the reply, although the prompt asks for the reply and nothing else.
+    Saved as it stood, the draft would open by telling the reader that the
+    machine was checking context."""
+    noisy = ("Checking for context on Alejandro's communication style and this "
+             "meeting.\n\nHi Shannon,\n\nThanks for the update. I confirm the "
+             "new time.\n\nAlejandro")
+    clean = mail.strip_preamble(noisy)
+    assert clean.startswith("Hi Shannon,")
+    assert "Checking for context" not in clean
+
+
+def test_a_reply_with_no_preamble_is_untouched():
+    good = "Hola Shannon,\n\nConfirmo el nuevo horario.\n\nAlejandro"
+    assert mail.strip_preamble(good) == good
+
+
+def test_a_text_with_no_greeting_survives_whole():
+    """Not every reply opens with a greeting. Cutting on a guess would throw
+    away the answer."""
+    body = "Confirmado para el jueves 3 a las 10.\n\nAlejandro"
+    assert mail.strip_preamble(body) == body
+
+
+def test_compose_returns_the_reply_without_the_preamble():
+    class Fake:
+        def run(self, prompt, **kw):
+            from nightshift.engines import EngineRun
+            return EngineRun(True, text="Thinking about it.\n\nHi Ana,\n\nSí.",
+                             cost_usd=0.0)
+
+    import nightshift.engines as eng
+    original = eng.run
+    eng.run = lambda prompt, **kw: Fake().run(prompt, **kw)
+    try:
+        r = mail.compose(mail.Item("needs_you", "t", "w", "u", "x"),
+                         engine="cursor", cwd="/tmp")
+        assert r.text.startswith("Hi Ana,")
+    finally:
+        eng.run = original

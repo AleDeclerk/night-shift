@@ -209,6 +209,27 @@ def write_draft(runner_module, item: "Item", cwd) -> DraftResult:
     return _check_draft(r)
 
 
+# An engine sometimes says what it is about to do before it does it. Cursor did
+# exactly that on 2026-08-31, in spite of a prompt asking for the reply alone.
+# Saved as it stood, the draft would open with the machine thinking out loud.
+GREETINGS = ("hi ", "hi,", "hello", "hey ", "dear ", "hola", "buenos ",
+             "buenas ", "estimad", "querid", "buen día")
+
+
+def strip_preamble(text: str) -> str:
+    """Drop whatever an engine wrote before the reply itself.
+
+    It cuts only when it finds a greeting to cut to. A reply that opens with
+    no greeting is left whole: guessing there would throw away the answer.
+    """
+    blocks = text.strip().split("\n\n")
+    for index, block in enumerate(blocks):
+        first = block.strip().lower()
+        if any(first.startswith(word) for word in GREETINGS):
+            return "\n\n".join(blocks[index:]).strip()
+    return text.strip()
+
+
 def compose(item: "Item", *, engine: str, cwd):
     """Write the reply text on any engine. Plain reasoning over the excerpt
     the triage already saved: no Gmail tool, so no connector is needed.
@@ -218,10 +239,15 @@ def compose(item: "Item", *, engine: str, cwd):
     """
     from nightshift import engines  # local import: engines depends on
                                     # backends, and backends depends on mail.
-    return engines.run(
+    run = engines.run(
         COMPOSE_PROMPT.format(title=item.title, why=item.body,
                               excerpt=item.excerpt),
         engine=engine, cwd=cwd)
+    if not run.ok:
+        return run
+    # An engine sometimes narrates before it answers. That narration must not
+    # become the first line of a draft.
+    return dataclasses.replace(run, text=strip_preamble(run.text))
 
 
 def save_draft(runner_module, item: "Item", text: str, cwd) -> DraftResult:
