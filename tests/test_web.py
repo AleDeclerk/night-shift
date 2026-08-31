@@ -140,3 +140,39 @@ def test_a_cycle_that_started_long_ago_and_never_ended_is_dead(tmp_path):
     conn.commit()
     body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
+
+
+def test_the_machine_room_shows_every_engine(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, ceiling_usd=20.0)).get("/").text
+    for label in ("Claude", "Gemini", "Cursor", "Ollama"):
+        assert label in body
+
+
+def test_sign_in_refuses_a_get(tmp_path):
+    """A prefetch of the browser must not start a login."""
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    assert client.get("/machines/cursor/login").status_code == 405
+
+
+def test_sign_in_status_answers_before_any_attempt(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    answer = client.get("/machines/cursor/login/status").json()
+    assert answer["state"] == "idle"
+    assert answer["has_link"] is False
+
+
+def test_the_status_payload_carries_no_credential(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    body = client.get("/machines/cursor/login/status").text
+    assert "challenge" not in body
+    assert "cursor.com" not in body
+
+
+def test_cancel_answers_even_with_no_flow(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    assert client.post("/machines/cursor/login/cancel").json()["state"] == "cancelled"

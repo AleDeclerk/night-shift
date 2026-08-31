@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import jobs, quota
+from nightshift import backends, jobs, quota, signin
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -17,6 +17,10 @@ TEMPLATES = Jinja2Templates(
 # A measured cycle takes one to three minutes. Past this, a run that never
 # ended is dead, not busy.
 STALE_MINUTES = 15
+
+# One flow at a time, in memory. A sign-in link is a credential, so it belongs
+# in no table and in no log.
+_FLOWS: dict = {}
 
 
 def _trouble(last) -> str | None:
@@ -79,7 +83,8 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
             "spent": round(spent, 2), "ceiling": ceiling_usd,
             "jobs_waiting": job_rows("needs_you", "failed"),
             "jobs_queued": job_rows("queued", "running"),
-            "jobs_done": job_rows("done")})
+            "jobs_done": job_rows("done"),
+            "engines": backends.check_all()})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
@@ -96,5 +101,31 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
         conn.commit()
         return RedirectResponse(row["source_url"] if row else "/",
                                 status_code=303)
+
+    @app.get("/machines/cursor/login/status")
+    def signin_status():
+        flow = _FLOWS.get("cursor")
+        if flow is None:
+            return {"state": "idle", "has_link": False, "seconds": 0}
+        return flow.status()
+
+    @app.post("/machines/cursor/login")
+    def signin_start():
+        old = _FLOWS.get("cursor")
+        if old is not None:
+            old.cancel()          # one attempt at a time
+        flow = signin.Flow()
+        _FLOWS["cursor"] = flow
+        flow.start()
+        # The link travels to the page here and nowhere else.
+        return {"link": flow.wait_for_link(timeout=25),
+                "state": flow.status()["state"]}
+
+    @app.post("/machines/cursor/login/cancel")
+    def signin_cancel():
+        flow = _FLOWS.get("cursor")
+        if flow is not None:
+            flow.cancel()
+        return {"state": "cancelled"}
 
     return app

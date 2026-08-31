@@ -61,6 +61,24 @@
   <div class="why">{{ i["body"] }}</div></div>{% endfor %}
 </details>
 
+<h2>Machine room</h2>
+{% for e in engines %}
+  <div class="card">
+    <strong>{{ e.label }}</strong> — {{ e.detail }}
+    <div class="why">
+      session:
+      {% if e.signed_in is none %}UNKNOWN{% elif e.signed_in %}YES{% else %}NO{% endif %}
+      · mail: {% if e.sees_mail %}YES{% else %}NO{% endif %}
+      · schema: {% if e.forced_schema %}YES{% else %}NO{% endif %}
+    </div>
+    {% if e.can_sign_in %}
+      <button data-engine="{{ e.name }}" class="signin">Sign in</button>
+    {% endif %}
+  </div>
+{% endfor %}
+<p class="why">Claude is the only engine with a mail connector, so the mail work
+stays on it.</p>
+
 <h2>Give a job</h2>
 {% for j in jobs_queued %}<div class="why">{{ j["prompt"] }}</div>{% endfor %}
 <form method="post" action="/jobs">
