@@ -67,3 +67,25 @@ def test_only_the_newest_probe_of_each_engine_comes_back(tmp_path):
     rows = backends.last_probes(conn)
     assert len(rows) == 1
     assert rows["claude"]["detail"] == "new"
+
+
+def test_the_local_engine_runs_through_the_harness():
+    """`ollama run` only writes text. The DeepSeek Harness gives the same local
+    model a sandbox and shell tools, and its patch already points at Ollama.
+    Measured on 2026-08-31: `dsh --profile headless` answered in 56 seconds."""
+    command = backends.PROBE_COMMANDS["ollama"]
+    assert command[0] == "dsh"
+    assert "--profile" in command and "headless" in command
+
+
+def test_the_local_engine_gets_its_placeholder_credential():
+    """Ollama authenticates nobody, but the OpenAI-compatible client refuses to
+    start without some value. This is not a paid API key, and it buys nothing:
+    the call stays on this machine."""
+    env = backends.probe_env("ollama")
+    assert env.get("OLLAMA_API_KEY")
+
+
+def test_no_other_engine_gets_a_key():
+    for name in ("claude", "gemini", "cursor"):
+        assert backends.probe_env(name) == {}, name

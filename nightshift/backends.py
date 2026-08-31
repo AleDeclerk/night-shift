@@ -7,6 +7,7 @@ feature that runs only when the user asks for it.
 import dataclasses
 import datetime as dt
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -214,7 +215,8 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
             raw = runner(command, cwd=cwd)
         else:
             out = subprocess.run(command, cwd=cwd, capture_output=True,
-                                 text=True, timeout=PROBE_TIMEOUT)
+                                 text=True, timeout=PROBE_TIMEOUT,
+                                 env={**os.environ, **probe_env(engine)})
             raw = (out.stdout or "") + (out.stderr or "")
     except OSError as exc:
         return ProbeResult(engine, False, False, 0.0,
