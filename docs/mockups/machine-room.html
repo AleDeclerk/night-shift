@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIGHT SHIFT — parte del turno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;500;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12100e;
+  --ink-soft:#2a2622;
+  --paper:#ddd7ca;
+  --paper-bright:#ebe6da;
+  --paper-dim:#c8c1b2;
+  --stamp:#8f2018;
+  --rule:#12100e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--ink)}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Courier Prime",ui-monospace,monospace;
+  font-size:15px;line-height:1.55;
+  padding:0 0 6rem;
+  position:relative;
+  overflow-x:hidden;
+}
+
+/* ---- grano de pelicula + vineta + parpadeo de proyector ---- */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;opacity:.55;
+  animation:grain .48s steps(3) infinite;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:radial-gradient(ellipse 120% 85% at 50% 45%,transparent 45%,rgba(18,16,14,.28) 88%,rgba(18,16,14,.52) 100%);
+  animation:flicker 5.5s ease-in-out infinite;
+}
+@keyframes grain{
+  0%,100%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}
+  50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-2%)}
+}
+@keyframes flicker{0%,100%{opacity:1}42%{opacity:.94}44%{opacity:1}77%{opacity:.96}}
+@media (prefers-reduced-motion:reduce){
+  body::before{animation:none}body::after{animation:none}
+  .gear{animation:none!important}
+}
+
+.sheet{max-width:60rem;margin:0 auto;padding:0 1.5rem}
+
+/* ---- cabecera: cartel de pelicula ---- */
+header{
+  border-bottom:6px double var(--rule);
+  padding:3.5rem 0 1.6rem;margin-bottom:.4rem;
+  text-align:center;position:relative;
+}
+.reel{display:flex;align-items:center;justify-content:center;gap:1.6rem}
+.gear{flex:none}
+.gear--slow{width:104px;height:104px;animation:spin 16s linear infinite}
+.gear--fast{width:72px;height:72px;margin-top:2.2rem;animation:spin 9s linear infinite reverse}
+@media (max-width:640px){.gear--slow{width:62px;height:62px}.gear--fast{width:44px;height:44px}}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{
+  font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:clamp(2.9rem,10vw,5.6rem);line-height:.86;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+h1 .thin{display:block;font-weight:300;font-size:.31em;letter-spacing:.55em;
+  margin-top:.85rem;text-indent:.55em}
+.tagline{
+  font-family:"Playfair Display",serif;font-style:italic;font-weight:700;
+  font-size:1.05rem;margin-top:1.5rem;color:var(--ink-soft);
+}
+
+/* ---- tarjeta de fichaje ---- */
+.timecard{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));
+  border:3px solid var(--rule);background:var(--paper-bright);
+  margin:2.2rem 0 3rem;position:relative;
+}
+.timecard::before,.timecard::after{
+  content:"";position:absolute;top:0;bottom:0;width:14px;
+  background-image:radial-gradient(circle,var(--paper) 3.2px,transparent 3.4px);
+  background-size:14px 22px;background-position:center;
+}
+.timecard::before{left:-3px}.timecard::after{right:-3px}
+.cell{padding:1rem 1.2rem;border-right:1px dashed var(--ink-soft)}
+.cell:last-child{border-right:0}
+.cell .k{
+  font-family:"Oswald",sans-serif;font-weight:500;font-size:.62rem;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+}
+.cell .v{font-size:1.22rem;font-weight:700;margin-top:.22rem;letter-spacing:-.01em}
+.cell .v.small{font-size:.95rem;font-weight:400}
+
+/* medidor de cuota */
+.gauge{height:12px;border:2px solid var(--rule);margin-top:.55rem;position:relative;background:var(--paper)}
+.gauge span{
+  position:absolute;inset:0 auto 0 0;
+  background:repeating-linear-gradient(45deg,var(--ink) 0 4px,transparent 4px 8px);
+  border-right:2px solid var(--ink);
+}
+
+/* ---- intertitulos ---- */
+.card-title{
+  text-align:center;margin:3.4rem 0 1.7rem;padding:1.1rem .8rem;
+  border-top:3px solid var(--rule);border-bottom:3px solid var(--rule);
+  position:relative;background:var(--paper-bright);
+}
+.card-title h2{
+  font-family:"Playfair Display",serif;font-weight:900;
+  font-size:clamp(1.3rem,4vw,2rem);letter-spacing:.05em;text-transform:uppercase;
+}
+.card-title .count{
+  font-family:"Oswald",sans-serif;font-weight:300;font-size:.68rem;
+  letter-spacing:.32em;text-transform:uppercase;color:var(--ink-soft);
+  margin-top:.42rem;
+}
+.card-title::before,.card-title::after{
+  content:"✦";position:absolute;top:50%;transform:translateY(-50%);
+  font-size:.75rem;color:var(--ink-soft);
+}
+.card-title::before{left:1rem}.card-title::after{right:1rem}
+
+/* ---- fichas de la linea de montaje ---- */
+.belt{border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);
+  background:repeating-linear-gradient(90deg,var(--ink) 0 9px,transparent 9px 20px);
+  height:7px;margin:0 0 1.6rem}
+.slug{
+  border:2px solid var(--rule);background:var(--paper-bright);
+  padding:1.15rem 1.35rem;margin-bottom:1.1rem;position:relative;
+  box-shadow:5px 5px 0 var(--ink);
+}
+.slug .no{
+  position:absolute;top:-2px;right:-2px;
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.65rem;letter-spacing:.16em;
+  background:var(--ink);color:var(--paper);padding:.18rem .55rem;
+}
+.slug h3{
+  font-family:"Oswald",sans-serif;font-weight:500;font-size:1.02rem;
+  letter-spacing:.02em;line-height:1.3;padding-right:5.5rem;
+}
+.slug .why{
+  font-family:"Playfair Display",serif;font-style:italic;
+  margin-top:.6rem;color:var(--ink-soft);font-size:.98rem;line-height:1.5;
+}
+.slug .foot{
+  display:flex;gap:1.1rem;align-items:center;flex-wrap:wrap;
+  margin-top:.9rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft);
+}
+.stamp{
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.6rem;
+  letter-spacing:.19em;text-transform:uppercase;
+  border:2px solid var(--stamp);color:var(--stamp);
+  padding:.2rem .55rem;transform:rotate(-2.4deg);
+}
+.stamp--bad{border-color:var(--ink);color:var(--paper);background:var(--ink);transform:rotate(1.6deg)}
+a.src{
+  font-family:"Oswald",sans-serif;font-size:.65rem;letter-spacing:.19em;
+  text-transform:uppercase;color:var(--ink);text-underline-offset:4px;
+}
+a.src:hover{color:var(--stamp)}
+
+details{border:2px solid var(--ink-soft);background:var(--paper-bright);margin-bottom:1.1rem}
+summary{
+  cursor:pointer;padding:.8rem 1.2rem;
+  font-family:"Oswald",sans-serif;font-weight:500;font-size:.72rem;
+  letter-spacing:.24em;text-transform:uppercase;
+}
+details[open] summary{border-bottom:1px dashed var(--ink-soft)}
+.discard{padding:.75rem 1.25rem;border-bottom:1px dotted var(--paper-dim);font-size:.9rem}
+.discard:last-child{border-bottom:0}
+.discard b{font-family:"Oswald",sans-serif;font-weight:500;display:block;font-size:.92rem}
+.discard span{color:var(--ink-soft);font-style:italic;font-family:"Playfair Display",serif}
+
+/* ---- sala de maquinas ---- */
+.machines{display:grid;grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr));gap:1.1rem}
+.engine{
+  border:3px solid var(--rule);background:var(--paper-bright);
+  padding:1.15rem;position:relative;
+}
+.engine.on{box-shadow:6px 6px 0 var(--ink)}
+.engine.off{opacity:.62}
+.engine .name{
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:1.12rem;
+  letter-spacing:.09em;text-transform:uppercase;
+}
+.engine .sub{font-size:.76rem;color:var(--ink-soft);margin-top:.15rem}
+.lamp{
+  display:inline-block;width:11px;height:11px;border:2px solid var(--ink);
+  border-radius:50%;margin-right:.45rem;vertical-align:-1px;
+}
+.lamp.lit{background:var(--ink);box-shadow:0 0 0 3px var(--paper),0 0 0 5px var(--ink)}
+.caps{list-style:none;margin-top:.95rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft)}
+.caps li{
+  display:flex;justify-content:space-between;gap:.6rem;
+  font-size:.74rem;padding:.24rem 0;letter-spacing:.02em;
+}
+.caps .yes{font-weight:700}
+.caps .no{color:var(--ink-soft);text-decoration:line-through}
+.lever{
+  display:block;width:100%;margin-top:1rem;padding:.6rem;
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.68rem;
+  letter-spacing:.22em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);border:2px solid var(--ink);cursor:pointer;
+}
+.lever[disabled]{background:transparent;color:var(--ink-soft);border-style:dashed;cursor:not-allowed}
+.lever.pulled{background:var(--stamp);border-color:var(--stamp)}
+
+.assign{
+  border:3px solid var(--rule);background:var(--paper-bright);
+  margin-top:1.5rem;padding:1.2rem;
+}
+.assign .row{
+  display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  padding:.75rem 0;border-bottom:1px dashed var(--ink-soft);flex-wrap:wrap;
+}
+.assign .row:last-child{border-bottom:0}
+.assign .job{font-family:"Oswald",sans-serif;font-weight:500;letter-spacing:.05em;font-size:.88rem}
+.assign .job small{display:block;font-family:"Courier Prime",monospace;font-weight:400;
+  letter-spacing:0;color:var(--ink-soft);text-transform:none;font-size:.74rem;margin-top:.15rem}
+select{
+  font-family:"Oswald",sans-serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--paper);border:2px solid var(--ink);padding:.42rem .7rem;color:var(--ink);
+}
+select:disabled{opacity:.45;border-style:dashed}
+
+form.order{display:flex;gap:.7rem;margin-top:1rem;flex-wrap:wrap}
+form.order input{
+  flex:1 1 18rem;font-family:"Courier Prime",monospace;font-size:.95rem;
+  background:var(--paper-bright);border:2px solid var(--ink);padding:.7rem .85rem;color:var(--ink);
+}
+form.order input::placeholder{color:var(--ink-soft);font-style:italic}
+form.order button{
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.68rem;letter-spacing:.22em;
+  text-transform:uppercase;background:var(--ink);color:var(--paper);
+  border:2px solid var(--ink);padding:.7rem 1.5rem;cursor:pointer;
+}
+form.order button:hover{background:var(--stamp);border-color:var(--stamp)}
+
+footer{
+  margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
+  text-align:center;font-family:"Playfair Display",serif;font-style:italic;
+  color:var(--ink-soft);font-size:.9rem;
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <div class="reel">
+    <svg class="gear gear--slow" viewBox="0 0 100 100" aria-hidden="true"><g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g><circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/></svg>
+    <h1>Night<br>Shift<span class="thin">parte del turno</span></h1>
+    <svg class="gear gear--fast" viewBox="0 0 100 100" aria-hidden="true"><g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g><circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/></svg>
+  </div>
+  <p class="tagline">La máquina trabajó mientras usted dormía.</p>
+</header>
+
+<div class="timecard">
+  <div class="cell">
+    <div class="k">Turno cerrado</div>
+    <div class="v">06:30</div>
+    <div class="v small">lun 31 ago</div>
+  </div>
+  <div class="cell">
+    <div class="k">Duración</div>
+    <div class="v">1 m 04 s</div>
+    <div class="v small">sin incidentes</div>
+  </div>
+  <div class="cell">
+    <div class="k">Consumo semanal</div>
+    <div class="v">0.85 / 20.00</div>
+    <div class="gauge"><span style="width:4.25%"></span></div>
+  </div>
+  <div class="cell">
+    <div class="k">Motor en línea</div>
+    <div class="v">CLAUDE</div>
+    <div class="v small">suscripción Max</div>
+  </div>
+</div>
+
+<div class="card-title">
+  <h2>Requiere su mano</h2>
+  <div class="count">Uno · pendiente de firma</div>
+</div>
+<div class="belt"></div>
+
+<article class="slug">
+  <span class="no">Pieza 01</span>
+  <h3>Updated invitation: Video Analysis Discovery — AIVXTech | Veritas Automata</h3>
+  <p class="why">Shannon Ryan movió el horario de la discovery de AIVXTech. No hay RSVP suyo, la invitación dice que su asistencia es opcional, y usted es el dueño de las notas de discovery. Confirme el nuevo horario.</p>
+  <div class="foot">
+    <span class="stamp">Borrador listo</span>
+    <a class="src" href="#">Ver original ↗</a>
+  </div>
+</article>
+
+<article class="slug">
+  <span class="no">Pieza 02</span>
+  <h3>Prepare the APH sprint review</h3>
+  <p class="why">La máquina se detuvo y pregunta: ¿este sprint es el 12 o el 13? No eligió por usted.</p>
+  <div class="foot">
+    <span class="stamp stamp--bad">Máquina detenida</span>
+    <a class="src" href="#">Responder ↗</a>
+  </div>
+</article>
+
+<div class="card-title">
+  <h2>Revisado, sin acción</h2>
+  <div class="count">Cuatro · descartados con motivo</div>
+</div>
+
+<details>
+  <summary>▸ Abrir el registro de descartes (4)</summary>
+  <div class="discard"><b>Re: AIVXTech time stamping discovery</b>
+    <span>«Thanks for the research. Typo on my part — I meant CEIA». Confirma la corrección que usted ya mandó.</span></div>
+  <div class="discard"><b>The Times, Business Insider — new requests</b>
+    <span>Digest de Qwoted. Pedidos de prensa sobre temas ajenos.</span></div>
+  <div class="discard"><b>Computer Weekly: developer impact</b>
+    <span>La consulta es para otro perfil de experto.</span></div>
+  <div class="discard"><b>Computer Weekly: legal AI experts</b>
+    <span>«I need legal AI experts before 1pm UK». No es su especialidad.</span></div>
+</details>
+
+<div class="card-title">
+  <h2>Sala de máquinas</h2>
+  <div class="count">Estado verificado · no declarado</div>
+</div>
+
+<div class="machines">
+
+  <div class="engine on">
+    <div class="name"><span class="lamp lit"></span>Claude</div>
+    <div class="sub">Suscripción Max · claude -p</div>
+    <ul class="caps">
+      <li><span>Arranca</span><span class="yes">SÍ</span></li>
+      <li><span>Sesión activa</span><span class="yes">SÍ</span></li>
+      <li><span>Ve el correo</span><span class="yes">SÍ</span></li>
+      <li><span>Esquema forzado</span><span class="yes">SÍ</span></li>
+    </ul>
+    <button class="lever pulled">Palanca activa</button>
+  </div>
+
+  <div class="engine on">
+    <div class="name"><span class="lamp lit"></span>Gemini</div>
+    <div class="sub">oauth-personal · gemini -p</div>
+    <ul class="caps">
+      <li><span>Arranca</span><span class="yes">SÍ</span></li>
+      <li><span>Sesión activa</span><span class="yes">SÍ</span></li>
+      <li><span>Ve el correo</span><span class="no">NO</span></li>
+      <li><span>Esquema forzado</span><span class="no">NO</span></li>
+    </ul>
+    <button class="lever">Asignar a encargos</button>
+  </div>
+
+  <div class="engine on">
+    <div class="name"><span class="lamp lit"></span>Ollama</div>
+    <div class="sub">local · qwen3.8:27b-mlx</div>
+    <ul class="caps">
+      <li><span>Arranca</span><span class="yes">SÍ</span></li>
+      <li><span>Sesión activa</span><span class="yes">LOCAL</span></li>
+      <li><span>Ve el correo</span><span class="no">NO</span></li>
+      <li><span>Esquema forzado</span><span class="yes">SÍ</span></li>
+    </ul>
+    <button class="lever">Asignar a encargos</button>
+  </div>
+
+  <div class="engine off">
+    <div class="name"><span class="lamp"></span>Cursor</div>
+    <div class="sub">cursor-agent · sin sesión</div>
+    <ul class="caps">
+      <li><span>Arranca</span><span class="yes">SÍ</span></li>
+      <li><span>Sesión activa</span><span class="no">NO</span></li>
+      <li><span>Ve el correo</span><span class="no">NO</span></li>
+      <li><span>Esquema forzado</span><span class="no">NO</span></li>
+    </ul>
+    <button class="lever" disabled>Requiere login</button>
+  </div>
+
+</div>
+
+<div class="assign">
+  <div class="row">
+    <div class="job">Triage del correo
+      <small>Lee la bandeja y decide qué necesita respuesta</small></div>
+    <select><option>CLAUDE — único con acceso</option></select>
+  </div>
+  <div class="row">
+    <div class="job">Redacción de borradores
+      <small>Escribe la respuesta y la guarda en Gmail</small></div>
+    <select><option>CLAUDE — único con acceso</option></select>
+  </div>
+  <div class="row">
+    <div class="job">Encargos
+      <small>Investigar, resumir, redactar: no toca el correo</small></div>
+    <select>
+      <option>CLAUDE — Max</option>
+      <option selected>GEMINI — oauth personal</option>
+      <option>OLLAMA — qwen3.8:27b local</option>
+      <option disabled>CURSOR — sin sesión</option>
+    </select>
+  </div>
+</div>
+
+<div class="card-title">
+  <h2>Dar una orden</h2>
+  <div class="count">Entra en la cola del próximo turno</div>
+</div>
+
+<form class="order" onsubmit="return false">
+  <input placeholder="¿Qué quiere que se haga?">
+  <button type="submit">A la cola</button>
+</form>
+
+<footer>Fin del parte. La máquina vuelve a las 06:30.</footer>
+
+</div>
+</body>
+</html>
