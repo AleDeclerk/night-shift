@@ -52,7 +52,10 @@ def _when(iso: str) -> str:
         return iso
 
 
-def make_app(conn, ceiling_usd: float) -> FastAPI:
+def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
+    """`engine_source` lets a test inject engines. Without it the page runs the
+    cheap checks, which take about five seconds when the cache is cold."""
+    engines_of = engine_source or backends.check_all
     app = FastAPI()
 
     @app.get("/")
@@ -118,8 +121,9 @@ def make_app(conn, ceiling_usd: float) -> FastAPI:
         _FLOWS["cursor"] = flow
         flow.start()
         # The link travels to the page here and nowhere else.
-        return {"link": flow.wait_for_link(timeout=25),
-                "state": flow.status()["state"]}
+        link = flow.wait_for_link(timeout=25)
+        backends.invalidate()   # the panel must show the new state at once
+        return {"link": link, "state": flow.status()["state"]}
 
     @app.post("/machines/cursor/login/cancel")
     def signin_cancel():

@@ -1,7 +1,22 @@
 # tests/test_web.py
 from fastapi.testclient import TestClient
 
-from nightshift import db, web
+from nightshift import backends, db, web
+
+
+def _engines():
+    """Fixed engines. No test may run a real CLI: it would take five seconds
+    for each page load and it would depend on the machine."""
+    return [
+        backends.Engine("claude", "Claude", "Max subscription", True, True,
+                        True, True, True, False),
+        backends.Engine("gemini", "Gemini", "Personal Google account", True,
+                        True, False, False, False, False),
+        backends.Engine("cursor", "Cursor", "cursor-agent", True, False,
+                        False, False, False, True),
+        backends.Engine("ollama", "Ollama", "6 local models", True, True,
+                        False, True, False, False),
+    ]
 
 
 def test_the_page_shows_the_three_buckets(tmp_path):
@@ -12,7 +27,7 @@ def test_the_page_shows_the_three_buckets(tmp_path):
                  " source_url) VALUES (1,'2026-08-26T03:00:00','needs_you',"
                  "'Shannon: deck','She asks for 3 layouts.','https://x/1')")
     conn.commit()
-    client = TestClient(web.make_app(conn, ceiling_usd=5.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     body = client.get("/").text
     assert "Shannon: deck" in body
     # The link goes through /open so the page can count what you read. The
@@ -23,7 +38,7 @@ def test_the_page_shows_the_three_buckets(tmp_path):
 
 def test_a_new_job_goes_to_the_queue(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, ceiling_usd=5.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     client.post("/jobs", data={"prompt": "Prepare the sprint review"},
                 follow_redirects=False)
     row = conn.execute("SELECT * FROM jobs").fetchone()
@@ -38,7 +53,7 @@ def test_the_page_shows_the_error_of_the_last_run(tmp_path):
                  " VALUES ('2026-08-26T03:00:00','mail',0,"
                  "'401 OAuth access token has expired')")
     conn.commit()
-    client = TestClient(web.make_app(conn, ceiling_usd=5.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     assert "401" in client.get("/").text
 
 
@@ -48,14 +63,14 @@ def test_the_page_says_when_the_last_good_cycle_ran(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind, ok)"
                  " VALUES ('2026-08-30T06:30:00','mail',1)")
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "30 Aug" in body
     assert "06:30" in body
 
 
 def test_the_page_says_never_when_no_cycle_ever_ran(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "never" in body.lower()
 
 
@@ -67,7 +82,7 @@ def test_a_failed_cycle_does_not_count_as_the_last_good_one(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind, ok, error)"
                  " VALUES ('2026-08-31T06:30:00','mail',0,'401 expired')")
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "30 Aug" in body  # the good one, not the failed one
     assert "401" in body
 
@@ -79,7 +94,7 @@ def test_opening_an_item_records_the_time(tmp_path):
     conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
                  " source_url) VALUES (1,'x','needs_you','t','https://x/1')")
     conn.commit()
-    client = TestClient(web.make_app(conn, ceiling_usd=5.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.get("/open/1", follow_redirects=False)
     assert r.headers["location"] == "https://x/1"
     assert conn.execute("SELECT opened_at FROM items WHERE id=1"
@@ -92,7 +107,7 @@ def test_a_job_that_needs_you_shows_its_question(tmp_path):
                  " VALUES ('x','Prepare the sprint review','needs_you',"
                  "'Which sprint number?')")
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "Prepare the sprint review" in body
     assert "Which sprint number?" in body
 
@@ -102,7 +117,7 @@ def test_a_queued_job_is_visible_on_the_page(tmp_path):
     conn.execute("INSERT INTO jobs (created_at, prompt, state)"
                  " VALUES ('x','Prepare the sprint review','queued')")
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "Prepare the sprint review" in body
 
 
@@ -113,7 +128,7 @@ def test_a_cycle_that_never_finished_is_visible(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind)"
                  " VALUES ('2026-08-30T06:30:00','mail')")
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
 
 
@@ -126,7 +141,7 @@ def test_a_cycle_that_is_running_now_is_not_called_dead(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
                  (just_now,))
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" not in body.lower()
     assert "running" in body.lower()
 
@@ -138,13 +153,13 @@ def test_a_cycle_that_started_long_ago_and_never_ended_is_dead(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
                  (old,))
     conn.commit()
-    body = TestClient(web.make_app(conn, ceiling_usd=5.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
 
 
 def test_the_machine_room_shows_every_engine(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, ceiling_usd=20.0)).get("/").text
+    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0)).get("/").text
     for label in ("Claude", "Gemini", "Cursor", "Ollama"):
         assert label in body
 
@@ -152,13 +167,13 @@ def test_the_machine_room_shows_every_engine(tmp_path):
 def test_sign_in_refuses_a_get(tmp_path):
     """A prefetch of the browser must not start a login."""
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     assert client.get("/machines/cursor/login").status_code == 405
 
 
 def test_sign_in_status_answers_before_any_attempt(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     answer = client.get("/machines/cursor/login/status").json()
     assert answer["state"] == "idle"
     assert answer["has_link"] is False
@@ -166,7 +181,7 @@ def test_sign_in_status_answers_before_any_attempt(tmp_path):
 
 def test_the_status_payload_carries_no_credential(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     body = client.get("/machines/cursor/login/status").text
     assert "challenge" not in body
     assert "cursor.com" not in body
@@ -174,5 +189,5 @@ def test_the_status_payload_carries_no_credential(tmp_path):
 
 def test_cancel_answers_even_with_no_flow(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, ceiling_usd=20.0))
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     assert client.post("/machines/cursor/login/cancel").json()["state"] == "cancelled"

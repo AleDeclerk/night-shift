@@ -59,3 +59,36 @@ def test_a_command_that_hangs_leaves_the_state_unknown():
     (cursor,) = [e for e in backends.check_all(runner=hanging)
                  if e.name == "cursor"]
     assert cursor.signed_in is None  # unknown, never a guess
+
+
+def test_the_second_call_does_not_run_the_commands_again():
+    """Measured on 2026-08-31: `claude mcp list` takes 3.9 seconds, because it
+    health-checks ten servers. Without a cache the morning page waits five
+    seconds before it draws anything."""
+    calls = []
+
+    def counting(args, **kw):
+        calls.append(args)
+        return ""
+
+    backends.invalidate()
+    backends.check_all(runner=counting, use_cache=True)
+    first = len(calls)
+    backends.check_all(runner=counting, use_cache=True)
+    assert len(calls) == first, "the second call ran the commands again"
+
+
+def test_invalidate_forces_a_fresh_look():
+    """After a sign-in the page must show the new state at once."""
+    calls = []
+
+    def counting(args, **kw):
+        calls.append(args)
+        return ""
+
+    backends.invalidate()
+    backends.check_all(runner=counting, use_cache=True)
+    first = len(calls)
+    backends.invalidate()
+    backends.check_all(runner=counting, use_cache=True)
+    assert len(calls) > first

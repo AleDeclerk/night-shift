@@ -9,8 +9,18 @@ import json
 import pathlib
 import shutil
 import subprocess
+import threading
+import time
 
 CHEAP_TIMEOUT = 8
+
+# Measured on 2026-08-31: `claude mcp list` takes 3.9 seconds, because it
+# health-checks ten servers. The other four commands add one more second. That
+# is cheap in quota and expensive in time, so the answer is held for a while.
+# The morning page must draw at once, not after five seconds.
+CACHE_SECONDS = 60
+_CACHE = {"at": 0.0, "engines": None}
+_CACHE_LOCK = threading.Lock()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,5 +106,33 @@ def _ollama(runner) -> Engine:
                   mail_capable=False, can_sign_in=False)
 
 
-def check_all(runner=None) -> list[Engine]:
+def _fresh(runner) -> list[Engine]:
     return [_claude(runner), _gemini(runner), _cursor(runner), _ollama(runner)]
+
+
+def invalidate() -> None:
+    """Drop the held answer. A sign-in must show on the page at once."""
+    with _CACHE_LOCK:
+        _CACHE["engines"] = None
+
+
+def check_all(runner=None, use_cache: bool | None = None) -> list[Engine]:
+    """An injected runner means "look again", so it skips the cache by
+    default. Otherwise one test would hand its answer to the next one."""
+    if use_cache is None:
+        use_cache = runner is None
+    if not use_cache:
+        return _fresh(runner)
+    with _CACHE_LOCK:
+        held = _CACHE["engines"]
+        if held is not None and time.monotonic() - _CACHE["at"] < CACHE_SECONDS:
+            return held
+    engines = _fresh(runner)
+    with _CACHE_LOCK:
+        _CACHE.update(at=time.monotonic(), engines=engines)
+    return engines
+
+
+def warm_up() -> None:
+    """Fill the cache in the background, so the first page waits for nothing."""
+    threading.Thread(target=lambda: check_all(), daemon=True).start()
