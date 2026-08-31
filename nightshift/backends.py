@@ -255,8 +255,26 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
     can_mail = "MAIL-OK" in text
     ok = bool(text.strip()) and not any(
         marker in lowered for marker in _FAILURE_MARKERS)
-    detail = _scrub(text).strip()[:200]
-    return ProbeResult(engine, ok, can_mail, cost, detail)
+    return ProbeResult(engine, ok, can_mail, cost, _explain(text))
+
+
+def _explain(text: str) -> str:
+    """Give the line that explains the outcome, not the first 200 characters.
+
+    A real probe of Gemini filled the page with `YOLO mode is enabled` and a
+    keytar warning, while the reason sat six lines below. A person reading a
+    status page needs the cause.
+    """
+    lines = [line.strip() for line in _scrub(text).splitlines() if line.strip()]
+    # Two passes, in this order. A known cause beats any line that merely says
+    # `error`: a keytar warning also says it, and it explains nothing.
+    for line in lines:
+        if any(marker in line.lower() for marker in FAILURE_MARKERS):
+            return line[:200]
+    for line in lines:
+        if "error" in line.lower():
+            return line[:200]
+    return (lines[0] if lines else "")[:200]
 
 
 def save_probe(conn, result: ProbeResult) -> None:

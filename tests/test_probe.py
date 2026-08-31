@@ -89,3 +89,24 @@ def test_the_local_engine_gets_its_placeholder_credential():
 def test_no_other_engine_gets_a_key():
     for name in ("claude", "gemini", "cursor"):
         assert backends.probe_env(name) == {}, name
+
+
+def test_the_detail_shows_the_cause_and_not_the_startup_noise():
+    """A real probe of Gemini on 2026-08-31 filled the page with `YOLO mode is
+    enabled` and a keytar warning, while the reason sat further down. The line
+    that explains the failure is the one worth 200 characters."""
+    noisy = ("YOLO mode is enabled. All tool calls will be automatically "
+             "approved.\nKeychain initialization encountered an error: Cannot "
+             "find module keytar.node\nRequire stack:\n- /opt/homebrew/x\n"
+             "Loaded cached credentials.\n"
+             "Error authenticating: IneligibleTierError: This client is no "
+             "longer supported for Gemini Code Assist for individuals.\n")
+    r = backends.probe("gemini", runner=_answer(noisy))
+    assert r.ok is False
+    assert "IneligibleTier" in r.detail
+    assert "YOLO mode" not in r.detail
+
+
+def test_a_working_probe_keeps_its_own_answer():
+    r = backends.probe("claude", runner=_answer('{"result":"MAIL-OK"}'))
+    assert r.detail.startswith("MAIL-OK")
