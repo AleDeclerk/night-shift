@@ -208,6 +208,7 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
     <div class="k">Consumo semanal</div>
     <div class="v">{{ spent }} / {{ ceiling }}</div>
     <div class="gauge"><span style="width:{{ (spent / ceiling * 100) if ceiling else 0 }}%"></span></div>
+    <div class="v small">equivalente en USD, no es un cobro</div>
   </div>
   <div class="cell">
     <div class="k">Motor del correo</div>
@@ -304,7 +305,7 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
     {% if e.can_sign_in %}
     <button class="lever" data-engine="{{ e.name }}">Iniciar sesión</button>
     {% endif %}
-    <button class="lever" data-probe="{{ e.name }}">{% if e.name == 'ollama' %}PROBAR DE VERDAD · GRATIS, LENTO{% else %}PROBAR DE VERDAD · ~0.80 USD{% endif %}</button>
+    <button class="lever" data-probe="{{ e.name }}">{% if e.name == 'ollama' %}PROBAR DE VERDAD · GRATIS, LENTO{% else %}PROBAR DE VERDAD · GASTA CUOTA{% endif %}</button>
   </div>
 {% endfor %}
 </div>

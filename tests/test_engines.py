@@ -147,3 +147,23 @@ def test_the_failure_markers_live_in_one_place():
     learn it and the other would not."""
     from nightshift import backends
     assert engines.FAILURE_MARKERS is backends.FAILURE_MARKERS
+
+
+def test_no_engine_ever_receives_a_paid_key():
+    """Rule 1 of the specification: subscriptions only. An API key would move
+    the cost from a flat monthly price to a metered bill."""
+    from nightshift import backends
+    for name in ("claude", "cursor", "gemini"):
+        assert backends.probe_env(name) == {}, name
+    # The local one gets a placeholder because the OpenAI-compatible client
+    # refuses to start without a value. It buys nothing and it meters nothing.
+    assert backends.probe_env("ollama") == {"OLLAMA_API_KEY": "ollama"}
+
+
+def test_no_command_ever_carries_bare_mode():
+    """`--bare` leaves the subscription and asks for ANTHROPIC_API_KEY."""
+    from nightshift import backends
+    for command in list(backends.PROBE_COMMANDS.values()):
+        assert "--bare" not in command, command
+    for name in engines.JOB_ENGINES:
+        assert "--bare" not in (engines.command_for(name, "x") or []), name

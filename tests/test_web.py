@@ -215,10 +215,22 @@ def test_a_stored_probe_shows_what_the_engine_did(tmp_path):
 
 
 def test_the_probe_button_names_the_price(tmp_path):
+    """The price is quota, not money. A plan of this kind meters no dollars,
+    and a button that says USD reads as a charge."""
     conn = db.connect(tmp_path / "s.db")
     body = TestClient(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
-    assert "USD" in body and "GRATIS" in body
+    assert "GASTA CUOTA" in body
+    assert "GRATIS" in body
+
+
+def test_the_page_says_that_the_meter_is_not_a_bill(tmp_path):
+    """`total_cost_usd` is what the work would have cost through the API. The
+    subscription charges none of it, so the page must not read as an invoice."""
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    assert "no es un cobro" in body
 
 
 def test_choosing_an_engine_is_remembered(tmp_path):
