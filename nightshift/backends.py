@@ -161,9 +161,12 @@ def warm_up() -> None:
 
 # --- The real probe. Costs 0.17 to 0.34 USD, only runs on request. ---------
 
+# The probe must exercise the same tools the cycle uses. Asking to list labels
+# while allowing only the thread tools got the call denied, and the panel then
+# reported that the one engine that reads the mail could not read it.
 PROBE_PROMPT = (
-    "Use your gmail tool to list the labels of this mailbox. "
-    "Answer with the single word MAIL-OK when the call works. "
+    "Use your gmail tool to search this mailbox for any thread from the last "
+    "day. Answer with the single word MAIL-OK when the search returns. "
     "When you have no gmail tool, or when the call fails, answer NO-MAIL and "
     "then say why in one short line, with the exact error if there is one. "
     "The reason matters: a missing permission and a rejected connector look "
@@ -242,7 +245,9 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
             out = subprocess.run(command, cwd=cwd, capture_output=True,
                                  text=True, timeout=PROBE_TIMEOUT,
                                  env={**os.environ, **probe_env(engine)})
-            raw = (out.stdout or "") + (out.stderr or "")
+            # Kept apart on purpose. Joining them put a warning line in front
+            # of the JSON, which killed the parse and lost the cost with it.
+            raw = {"stdout": out.stdout or "", "stderr": out.stderr or ""}
     except OSError as exc:
         return ProbeResult(engine, False, False, 0.0,
                            f"could not run {engine}: {exc}")
@@ -250,11 +255,17 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
         return ProbeResult(engine, False, False, 0.0,
                            f"{engine} did not answer within {PROBE_TIMEOUT}s")
 
+    # A runner may answer with the two streams apart, or with one text.
+    if isinstance(raw, dict):
+        stdout, stderr = raw.get("stdout", ""), raw.get("stderr", "")
+    else:
+        stdout, stderr = raw, ""
+
     cost = 0.0
     try:
-        data = json.loads(raw)
+        data = json.loads(stdout)
     except (json.JSONDecodeError, TypeError):
-        text = raw
+        text = stdout + stderr
     else:
         text = data.get("result") or data.get("response") or raw
         cost = float(data.get("total_cost_usd") or 0.0)

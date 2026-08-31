@@ -126,3 +126,23 @@ def test_the_probe_asks_for_the_reason_of_a_failure():
     """`NO-MAIL` alone hides why. Cursor fails for one reason and a missing
     permission for another, and the page must tell them apart."""
     assert "why" in backends.PROBE_PROMPT.lower()
+
+
+def test_the_probe_exercises_the_tools_the_system_really_uses():
+    """The prompt asked to list labels while the allowed tools were the ones
+    the cycle uses to read threads. So the call was denied and the panel said
+    Claude could not read the mail. A probe of other tools proves nothing."""
+    assert "label" not in backends.PROBE_PROMPT.lower()
+    assert "search" in backends.PROBE_PROMPT.lower()
+
+
+def test_noise_on_stderr_does_not_break_the_json():
+    """The probe joined stdout and stderr, so one warning line turned a clean
+    JSON answer into unparsable text, and the cost was lost with it."""
+    def noisy(args, cwd=None):
+        return {"stdout": '{"result":"MAIL-OK","total_cost_usd":0.42}',
+                "stderr": "warning: something on stderr\n"}
+
+    r = backends.probe("claude", runner=noisy)
+    assert r.can_mail is True
+    assert r.cost_usd == 0.42
