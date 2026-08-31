@@ -69,6 +69,33 @@ def test_a_full_ceiling_stops_the_cycle(tmp_path):
     assert stub.ran is False
 
 
+def test_no_room_on_claude_skips_the_fetch_and_records_why(tmp_path):
+    """Rule 2 of the cascade design: only Claude holds the connector, so the
+    fetch never walks the ladder. When Claude has no room this is not a
+    failure, it is the budget running its course, so the cycle must not stop
+    on an error: it fetches nothing and it says why."""
+    conn = db.connect(tmp_path / "s.db")
+    # NOW is a Wednesday: the reserve is 8 of a ceiling of 20, so the system
+    # may use 12. 15 spent this week leaves no room.
+    conn.execute(
+        "INSERT INTO events (at, kind, engine, cost_usd)"
+        " VALUES (?, 'draft_written', 'claude', 15.0)", (NOW.isoformat(),))
+    conn.commit()
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+
+    assert stub.ran is False   # the fetch never happened
+    row = _last_run(conn)
+    assert row["ok"] == 1      # not a failure
+    assert "claude" in row["error"]
+
+    ran = conn.execute(
+        "SELECT * FROM events WHERE kind='cycle_ran'").fetchall()
+    assert len(ran) == 1
+    assert "claude" in ran[0]["detail"]
+
+
 def test_an_item_that_needs_you_gets_a_draft(tmp_path):
     from nightshift.mail import Item
     conn = db.connect(tmp_path / "s.db")

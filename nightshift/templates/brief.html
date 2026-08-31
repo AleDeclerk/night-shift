@@ -337,6 +337,23 @@ dialog#room .assign button{font-family:"Oswald",sans-serif;font-weight:700;
   padding:.42rem .9rem;cursor:pointer}
 dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
 
+/* ---- la cascada: techo, gasto de la semana y lugar de cada escalon ---- */
+dialog#room .ladder{margin-top:1.1rem;padding-top:1rem;border-top:3px double var(--rule)}
+dialog#room .ladder h3{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;margin-bottom:.6rem}
+.ladderlist{list-style:none}
+.ladderlist li{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;
+  padding:.4rem 0;border-bottom:1px dashed var(--ink-soft)}
+.ladderlist li:last-child{border-bottom:0}
+.ladderlist .lname{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:.72rem;letter-spacing:.08em;min-width:5rem}
+.ladderlist .lspent{font-family:"Courier Prime",monospace;font-size:.82rem;
+  color:var(--ink-soft)}
+.ladderlist .lroom{font-family:"Oswald",sans-serif;font-weight:500;
+  font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-soft);margin-left:auto}
+.ladderlist .stamp{margin-left:auto}
+
 /* la franja de abajo queda solo para dar ordenes */
 .a-order form.order{flex:1 1 100%}
 
@@ -631,7 +648,7 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
         <label for="mail-engine">Redacta la respuesta</label>
         <select id="mail-engine" name="name">
           {% for name in mail_engines %}
-          <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
+          <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{% if name == 'auto' %}AUTOMÁTICO (CASCADA){% else %}{{ name|upper }}{% endif %}</option>
           {% endfor %}
         </select>
         <button type="submit">Fijar</button>
@@ -643,13 +660,35 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
         <label for="job-engine">Hace los encargos</label>
         <select id="job-engine" name="name">
           {% for name in job_engines %}
-          <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
+          <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{% if name == 'auto' %}AUTOMÁTICO (CASCADA){% else %}{{ name|upper }}{% endif %}</option>
           {% endfor %}
         </select>
         <button type="submit">Fijar</button>
       </form>
       <p class="note">Las tareas de la cola. No tocan el correo, así que
       cualquier motor sirve.</p>
+
+      <div class="ladder">
+        <h3>La cascada</h3>
+        <p class="note" style="margin:0 0 .9rem;text-align:left">
+          Hoy Claude reserva {{ "%g"|format(claude_reserve) }} de
+          {{ "%g"|format(claude_ceiling) }}, quedan
+          {{ "%g"|format(claude_ceiling - claude_reserve) }}.
+        </p>
+        <ul class="ladderlist">
+        {% for row in ladder %}
+          <li>
+            <span class="lname">{{ row.step.name|upper }}</span>
+            <span class="lspent">{{ "%.2f"|format(row.spent) }} / {{ "%g"|format(row.step.ceiling) }} {{ row.step.unit }}</span>
+            {% if row.ok %}
+            <span class="lroom">hay lugar</span>
+            {% else %}
+            <span class="stamp">sin lugar</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+      </div>
     </div>
   </div>
 </dialog>

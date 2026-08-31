@@ -230,9 +230,12 @@ def strip_preamble(text: str) -> str:
     return text.strip()
 
 
-def compose(item: "Item", *, engine: str, cwd):
+def compose(item: "Item", *, engine: str, cwd, model: str | None = None):
     """Write the reply text on any engine. Plain reasoning over the excerpt
     the triage already saved: no Gmail tool, so no connector is needed.
+
+    `model` names a step of the cascade to cursor; every other engine ignores
+    it.
 
     Returns the run as it stands, so the caller sees the cost and any
     failure.
@@ -242,7 +245,7 @@ def compose(item: "Item", *, engine: str, cwd):
     run = engines.run(
         COMPOSE_PROMPT.format(title=item.title, why=item.body,
                               excerpt=item.excerpt),
-        engine=engine, cwd=cwd)
+        engine=engine, cwd=cwd, model=model)
     if not run.ok:
         return run
     # An engine sometimes narrates before it answers. That narration must not
@@ -251,13 +254,15 @@ def compose(item: "Item", *, engine: str, cwd):
 
 
 def reply_cost_and_trace(mail_module, runner_module, item: "Item", *,
-                         engine: str, cwd) -> tuple[float, bool, str]:
+                         engine: str, cwd,
+                         model: str | None = None) -> tuple[float, bool, str]:
     """Write one reply, on whichever engine is asked, and give back what it
     cost and whether it worked.
 
     Claude composes and saves in one call: it is the only engine that
     reaches Gmail. Any other engine only writes the text, and Claude still
-    has to save it, so a failed compose never reaches save_draft.
+    has to save it, so a failed compose never reaches save_draft. `model`
+    reaches only that compose call; claude ignores it.
 
     `mail_module` is a parameter, not the module of this file, so a caller
     can inject a stub in a test and never touch a real engine.
@@ -265,7 +270,7 @@ def reply_cost_and_trace(mail_module, runner_module, item: "Item", *,
     if engine == "claude":
         draft = mail_module.write_draft(runner_module, item, cwd=cwd)
         return draft.cost_usd, draft.ok, draft.note
-    composed = mail_module.compose(item, engine=engine, cwd=cwd)
+    composed = mail_module.compose(item, engine=engine, cwd=cwd, model=model)
     if not composed.ok:
         return (composed.cost_usd, False,
                 f"The compose call failed: {composed.error}")

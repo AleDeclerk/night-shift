@@ -8,7 +8,11 @@ from nightshift import engines
 # --- command_for -----------------------------------------------------------
 
 def test_every_job_engine_has_a_command():
+    # "auto" is not a CLI: a caller resolves it through the cascade to one
+    # of the other three before it ever reaches command_for.
     for engine in engines.JOB_ENGINES:
+        if engine == "auto":
+            continue
         assert engines.command_for(engine, "hello") is not None
 
 

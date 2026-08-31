@@ -8,7 +8,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import backends, engines, jobs, life, mail, quota, runner, signin
+from nightshift import (backends, cascade, engines, jobs, life, mail, quota,
+                        runner, signin)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -81,7 +82,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         good = conn.execute(
             "SELECT * FROM runs WHERE ok = 1 ORDER BY id DESC LIMIT 1"
         ).fetchone()
-        spent = quota.spent_this_week(conn, dt.datetime.now())
+        now = dt.datetime.now()
+        spent = quota.spent_this_week(conn, now)
+        ladder = [{
+            "step": step, "spent": cascade.spent_by(conn, step.engine, now),
+            "ok": cascade.has_room(conn, step, now)[0],
+        } for step in cascade.LADDER]
+        claude_reserve = cascade.reserve_for(now, cascade.LADDER[0].ceiling)
         return TEMPLATES.TemplateResponse(request, "brief.html", {
             "needs_you": life.open_items(conn),
             "done": life.closed_items(conn),
@@ -97,7 +104,9 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "job_engine": engines.get_engine(conn),
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
-            "mail_engines": engines.MAIL_ENGINES})
+            "mail_engines": engines.MAIL_ENGINES,
+            "ladder": ladder, "claude_ceiling": cascade.LADDER[0].ceiling,
+            "claude_reserve": claude_reserve})
 
     @app.post("/jobs")
     def add_job(prompt: str = Form(...)):
@@ -128,13 +137,18 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
                              source_url=row["source_url"] or "",
                              excerpt=row["excerpt"] or "")
             mail_engine = engines.get_mail_engine(conn)
+            compose_engine, compose_model = mail_engine, None
+            if mail_engine == "auto":
+                step, _fallen_from = cascade.choose(conn, dt.datetime.now())
+                compose_engine, compose_model = step.engine, step.model
             # The same call the cycle makes: Claude composes and saves in one
             # go, any other engine composes and Claude saves it.
             cost, ok, note = mail.reply_cost_and_trace(
-                mail, runner, item, engine=mail_engine, cwd=backends.WORKSPACE)
+                mail, runner, item, engine=compose_engine,
+                model=compose_model, cwd=backends.WORKSPACE)
             if ok:
                 life.record(conn, "draft_written", item_id=item_id,
-                            engine=mail_engine, cost_usd=cost, detail=note)
+                            engine=compose_engine, cost_usd=cost, detail=note)
             life.apply_verb(conn, item_id, "rehacer")
         return RedirectResponse("/", status_code=303)
 

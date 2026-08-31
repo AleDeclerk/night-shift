@@ -2,7 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import engines, jobs, life, mail, quota
+from nightshift import cascade, engines, jobs, life, mail, quota
 
 
 def _start_run(conn, now, kind) -> int:
@@ -40,6 +40,15 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
         _end_run(conn, run_id, False, error=decision.reason)
         return
 
+    # Rule 2 of the cascade design: only Claude holds the Gmail connector, so
+    # the fetch never walks the ladder. When Claude has no room this is not a
+    # failure, it is the budget running its course, so the cycle ends clean
+    # and waits for the next day.
+    room_ok, room_reason = cascade.has_room(conn, cascade.LADDER[0], now)
+    if not room_ok:
+        _end_run(conn, run_id, True, error=room_reason)
+        return
+
     # There is no separate health check. It costs as much as the work that it
     # would protect, so the triage itself reports an authentication failure.
     result = mail_module.triage(runner_module, cwd=workspace, since=since)
@@ -47,6 +56,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     if result.error:
         _end_run(conn, run_id, False, cost=spent, error=result.error[:400])
         return
+
+    # Which engine composes the reply. A fixed name runs exactly as before;
+    # "auto" walks the ladder once for the whole cycle, so every item in it
+    # gets the same choice and the page can name the one engine that worked.
+    compose_engine, compose_model = mail_engine, None
+    if mail_engine == "auto":
+        step, _fallen_from = cascade.choose(conn, now)
+        compose_engine, compose_model = step.engine, step.model
 
     # Each item commits on its own. One exception in the middle used to throw
     # away every draft already written and every dollar already spent.
@@ -70,8 +87,8 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                     stopped_by_budget += 1
                 else:
                     cost, ok, note = mail.reply_cost_and_trace(
-                        mail_module, runner_module, item, engine=mail_engine,
-                        cwd=workspace)
+                        mail_module, runner_module, item, engine=compose_engine,
+                        model=compose_model, cwd=workspace)
                     spent += cost
                     draft_ok, draft_cost = ok, cost
                     # The trace of the draft rides with the item. Without it
@@ -89,7 +106,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                         detail=item.bucket)
             if draft_ok:
                 life.record(conn, "draft_written", item_id=item_id,
-                            engine=mail_engine, cost_usd=draft_cost)
+                            engine=compose_engine, cost_usd=draft_cost)
         except Exception as exc:  # noqa: BLE001
             _end_run(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400])
@@ -111,8 +128,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # loop above: a job that explodes must not lose the cost already spent.
     try:
         if decision.spent_usd + spent < ceiling_usd:
+            job_engine = engines.get_engine(conn)
+            if job_engine == "auto":
+                # The job prompt names no model, so the ladder only picks the
+                # CLI here; a job never asks for Grok over Flash by name.
+                step, _fallen_from = cascade.choose(conn, now)
+                job_engine = step.engine
             spent += jobs.run_next(conn, runner_module, workspace,
-                                   engine=engines.get_engine(conn))
+                                   engine=job_engine)
     except Exception as exc:  # noqa: BLE001
         _end_run(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400])
         return

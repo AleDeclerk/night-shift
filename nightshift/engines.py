@@ -12,8 +12,11 @@ import subprocess
 
 from nightshift import backends
 
-JOB_ENGINES = ("claude", "cursor", "ollama")   # gemini cannot run
-MAIL_ENGINES = ("claude", "cursor", "ollama")
+# "auto" walks the cascade of nightshift.cascade instead of naming one CLI.
+# It is not itself a command: command_for and engines.run never see it, since
+# a caller resolves it to a concrete engine first.
+JOB_ENGINES = ("auto", "claude", "cursor", "ollama")   # gemini cannot run
+MAIL_ENGINES = ("auto", "claude", "cursor", "ollama")
 DEFAULT_ENGINE = "claude"
 
 SETTINGS_KEY = "job_engine"
@@ -37,13 +40,23 @@ class EngineRun:
     error: str | None = None
 
 
-def command_for(engine: str, prompt: str) -> list[str] | None:
-    """The exact command line for one engine, or None when it cannot run."""
+def command_for(engine: str, prompt: str,
+                model: str | None = None) -> list[str] | None:
+    """The exact command line for one engine, or None when it cannot run.
+
+    `model` names a step of the cascade to cursor-agent with `--model`. Only
+    cursor takes one: claude has no flag for it, and the local model is
+    whatever `dsh` already points at, so a model given to either changes
+    nothing.
+    """
     if engine == "claude":
         return ["claude", "-p", prompt, "--output-format", "json"]
     if engine == "cursor":
-        return ["cursor-agent", "-p", prompt, "--output-format", "json",
-                 "--force"]
+        command = ["cursor-agent", "-p", prompt, "--output-format", "json",
+                   "--force"]
+        if model:
+            command += ["--model", model]
+        return command
     if engine == "ollama":
         return ["dsh", "--profile", "headless", prompt]
     return None
@@ -63,9 +76,10 @@ def _read_answer(raw: str) -> tuple[str, float]:
     return text, cost
 
 
-def run(prompt: str, *, engine: str, cwd, timeout: int = 900) -> EngineRun:
+def run(prompt: str, *, engine: str, cwd, timeout: int = 900,
+        model: str | None = None) -> EngineRun:
     """Run one headless turn on `engine`. Never raises."""
-    command = command_for(engine, prompt)
+    command = command_for(engine, prompt, model)
     if command is None:
         return EngineRun(False, error=f"Unknown engine: {engine}")
 
