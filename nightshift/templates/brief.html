@@ -185,13 +185,12 @@ html,body{height:100%}
 body{padding:0;overflow:hidden}
 .board{
   height:100vh;display:grid;gap:.7rem;padding:.7rem;
-  grid-template-columns:1.05fr 1fr;
-  grid-template-rows:auto minmax(0,1.15fr) minmax(0,1fr) auto;
+  grid-template-columns:1.15fr 1fr;
+  grid-template-rows:auto minmax(0,1fr) auto;
   grid-template-areas:
-    "bar      bar"
-    "hands    machines"
-    "hands    done"
-    "order    order";
+    "bar    bar"
+    "hands  done"
+    "order  order";
 }
 .bar{grid-area:bar}.a-hands{grid-area:hands}.a-machines{grid-area:machines}
 .a-done{grid-area:done}.a-order{grid-area:order}
@@ -269,9 +268,37 @@ body{padding:0;overflow:hidden}
 @media (max-width:900px){
   body{overflow:auto}
   .board{height:auto;grid-template-columns:1fr;
-    grid-template-areas:"bar" "hands" "machines" "done" "order"}
+    grid-template-areas:"bar" "hands" "done" "order"}
   .panel > .body{max-height:70vh}
 }
+
+/* ---- la sala de maquinas, escondida detras de un boton de la barra ---- */
+.roombtn{
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.6rem;
+  letter-spacing:.18em;text-transform:uppercase;cursor:pointer;
+  background:var(--paper-bright);color:var(--ink);border:2px solid var(--ink);
+  padding:.42rem .9rem;display:inline-flex;align-items:center;gap:.5rem;
+}
+.roombtn:hover{background:var(--ink);color:var(--paper)}
+.roombtn .down{width:9px;height:9px;border-radius:50%;background:var(--stamp);
+  box-shadow:0 0 0 2px var(--paper-bright)}
+dialog#room{border:3px solid var(--rule);background:var(--paper);color:var(--ink);
+  padding:0;max-width:64rem;width:92vw;max-height:88vh}
+dialog#room::backdrop{background:rgba(18,16,14,.72)}
+dialog#room .roomhead{display:flex;justify-content:space-between;align-items:baseline;
+  gap:1rem;padding:.8rem 1.1rem;border-bottom:3px double var(--rule);
+  background:var(--paper-bright)}
+dialog#room .roomhead h2{font-family:"Playfair Display",serif;font-weight:900;
+  font-size:1.15rem;letter-spacing:.04em;text-transform:uppercase}
+dialog#room .roomhead .count{font-family:"Oswald",sans-serif;font-weight:300;
+  font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+dialog#room .roombody{padding:1rem 1.1rem;overflow-y:auto;max-height:74vh}
+dialog#room .close{font-family:"Oswald",sans-serif;font-weight:700;font-size:.6rem;
+  letter-spacing:.18em;text-transform:uppercase;background:var(--ink);color:var(--paper);
+  border:2px solid var(--ink);padding:.35rem .9rem;cursor:pointer}
+dialog#room .machines{grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.8rem}
+dialog#room .engine{padding:.9rem}
+dialog#room .caps li{font-size:.68rem}
 </style>
 </head>
 <body>
@@ -282,12 +309,15 @@ body{padding:0;overflow:hidden}
       <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
       <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
     </svg>
-  <h1>Night Shift<span class="thin">parte del turno</span></h1>
+  <h1>Night Shift<span class="thin">los del turno noche</span></h1>
   <svg class="gear gear--fast" viewBox="0 0 100 100" aria-hidden="true">
       <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
       <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
     </svg>
-  <p class="tagline">Los del turno noche.</p>
+  <button class="roombtn" id="open-room">
+    {% if engines | rejectattr('signed_in') | list %}<span class="down" title="Un motor sin sesión"></span>{% endif %}
+    Sala de máquinas
+  </button>
   <div class="timecard">
   <div class="cell">
     <div class="k">Último turno cerrado</div>
@@ -345,13 +375,71 @@ body{padding:0;overflow:hidden}
   </div>
 </section>
 
-<section class="panel a-machines">
+
+<section class="panel a-done">
   <div class="head">
-    <h2>Sala de máquinas</h2>
-    <div class="count">Estado verificado · no declarado</div>
+    <h2>Terminado y descartado</h2>
+    <div class="count">{{ done|length + jobs_done|length }} hechos · {{ no_action|length }} sin acción</div>
   </div>
   <div class="body">
-    <div class="machines">
+    {% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
+{% for j in jobs_done %}
+<article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
+{% endfor %}
+{% if not done and not jobs_done %}<p class="empty">Todavía nada.</p>{% endif %}
+    <details>
+  <summary>▸ Revisado, sin acción ({{ no_action|length }})</summary>
+  {% for i in no_action %}
+  <div class="discard"><b>{{ i["title"] }}</b><span>{{ i["body"] }}</span></div>
+  {% endfor %}
+</details>
+  </div>
+</section>
+
+<div class="a-order">
+  <form class="order" method="post" action="/jobs">
+  <input name="prompt" placeholder="Agendar tareas">
+  <button type="submit">A la cola</button>
+</form>
+  <div class="assign">
+    <div class="assign">
+  <form method="post" action="/machines/engine">
+    <label for="job-engine">Motor de los encargos</label>
+    <select id="job-engine" name="name">
+      {% for name in job_engines %}
+      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">El correo se queda en Claude: es el único motor con conector. El
+  motor local es gratis y lento.</p>
+  <form method="post" action="/machines/mail-engine">
+    <label for="mail-engine">Motor que redacta</label>
+    <select id="mail-engine" name="name">
+      {% for name in mail_engines %}
+      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
+  conector. Otro motor sólo escribe el texto de la respuesta.</p>
+</div>
+  </div>
+  <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>
+</div>
+
+</div>
+
+<dialog id="room">
+  <div class="roomhead">
+    <h2>Sala de máquinas</h2>
+    <div class="count">Estado verificado · no declarado</div>
+    <button class="close" id="close-room">Cerrar</button>
+  </div>
+  <div class="roombody">
+<div class="machines">
 {% for e in engines %}
   <div class="engine {{ 'on' if e.signed_in else 'off' }}">
     <div class="name">
@@ -388,71 +476,25 @@ body{padding:0;overflow:hidden}
   </div>
 {% endfor %}
 </div>
-    <div id="signin" hidden>
+<div id="signin" hidden>
   <div class="head">Ingreso a Cursor</div>
   <div class="msg"></div>
   <a hidden target="_blank" rel="noopener noreferrer">Abrir el ingreso ↗</a>
   <div class="state"></div>
 </div>
   </div>
-</section>
+</dialog>
 
-<section class="panel a-done">
-  <div class="head">
-    <h2>Terminado y descartado</h2>
-    <div class="count">{{ done|length + jobs_done|length }} hechos · {{ no_action|length }} sin acción</div>
-  </div>
-  <div class="body">
-    {% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
-{% for j in jobs_done %}
-<article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
-{% endfor %}
-{% if not done and not jobs_done %}<p class="empty">Todavía nada.</p>{% endif %}
-    <details>
-  <summary>▸ Revisado, sin acción ({{ no_action|length }})</summary>
-  {% for i in no_action %}
-  <div class="discard"><b>{{ i["title"] }}</b><span>{{ i["body"] }}</span></div>
-  {% endfor %}
-</details>
-  </div>
-</section>
-
-<div class="a-order">
-  <form class="order" method="post" action="/jobs">
-  <input name="prompt" placeholder="¿Qué quiere que se haga?">
-  <button type="submit">A la cola</button>
-</form>
-  <div class="assign">
-    <div class="assign">
-  <form method="post" action="/machines/engine">
-    <label for="job-engine">Motor de los encargos</label>
-    <select id="job-engine" name="name">
-      {% for name in job_engines %}
-      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">El correo se queda en Claude: es el único motor con conector. El
-  motor local es gratis y lento.</p>
-  <form method="post" action="/machines/mail-engine">
-    <label for="mail-engine">Motor que redacta</label>
-    <select id="mail-engine" name="name">
-      {% for name in mail_engines %}
-      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
-  conector. Otro motor sólo escribe el texto de la respuesta.</p>
-</div>
-  </div>
-  <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>
-</div>
-
-</div>
 <script>
+// La sala se abre en un dialog nativo: cierra con Escape y no necesita libreria.
+(function () {
+  var room = document.getElementById("room");
+  var open = document.getElementById("open-room");
+  var close = document.getElementById("close-room");
+  if (open && room) { open.addEventListener("click", function () { room.showModal(); }); }
+  if (close && room) { close.addEventListener("click", function () { room.close(); }); }
+})();
+
 // El enlace de ingreso es una credencial: llega una vez, se usa y no se guarda.
 document.querySelectorAll(".lever[data-engine]").forEach(function (lever) {
   lever.addEventListener("click", function () {
