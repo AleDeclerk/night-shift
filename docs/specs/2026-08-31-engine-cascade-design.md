@@ -4,8 +4,8 @@
 
 ## 1. Purpose
 
-The system runs on one engine at a time, chosen by hand in the machine room.
-When that engine runs out of quota, the work stops.
+The system uses one engine at a time, chosen by hand in the machine room.
+When that engine has no quota left, the work stops.
 
 This phase makes the choice automatic. The work walks down a ladder of engines,
 and it takes the first one with room left. The user can still force any step by
@@ -75,9 +75,9 @@ for each account and reports it nowhere. One function holds it.
 For each call, the system walks the ladder from the top and takes the first
 step that answers yes to all of these:
 
-1. its engine is installed and holds a session;
-2. its last real probe did not fail, when one exists;
-3. its spend this week is under its ceiling, minus the reserve of today.
+1. Its engine is installed and holds a session.
+2. Its last real probe did not fail, when one exists.
+3. Its spend this week is under its ceiling, minus the reserve of today.
 
 When no step qualifies, the local engine takes the work, because it has no
 limit. The choice is written into the event, so the weekly board can show which
@@ -99,9 +99,9 @@ a bad automatic choice without editing anything.
 
 ## 7. Out of scope
 
-Changing the ceiling from the page, a ladder for each kind of work, and any
-attempt to read the real balance of a subscription. The first two are easy
-later; the third is impossible today.
+Changing the ceiling from the page, and a ladder for each kind of work. Also
+any try to read the real balance of a subscription. The first two are easy
+later. The third one is impossible today.
 
 ## 8. Acceptance criteria
 
@@ -119,6 +119,6 @@ later; the third is impossible today.
 - Given an engine fixed by hand, when a call runs, then the ladder is not
   walked and the fixed engine takes the work.
 - Given a call that fell to a lower step, when the page shows it, then it names
-  the engine that worked and the step that was skipped.
+  the engine that worked. It also names the step that was skipped.
 - Given the mail fetch and no room on Claude, when the cycle runs, then it
   fetches nothing and it records why.
