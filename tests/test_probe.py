@@ -110,3 +110,19 @@ def test_the_detail_shows_the_cause_and_not_the_startup_noise():
 def test_a_working_probe_keeps_its_own_answer():
     r = backends.probe("claude", runner=_answer('{"result":"MAIL-OK"}'))
     assert r.detail.startswith("MAIL-OK")
+
+
+def test_the_claude_probe_carries_its_gmail_permissions():
+    """A probe run without --allowedTools is denied in headless mode, and the
+    engine answers NO-MAIL honestly. On 2026-08-31 that made the panel say the
+    only engine that reads the mail could not read it."""
+    from nightshift import mail
+    command = backends.PROBE_COMMANDS["claude"]
+    assert "--allowedTools" in command
+    assert mail.READ_TOOLS in command
+
+
+def test_the_probe_asks_for_the_reason_of_a_failure():
+    """`NO-MAIL` alone hides why. Cursor fails for one reason and a missing
+    permission for another, and the page must tell them apart."""
+    assert "why" in backends.PROBE_PROMPT.lower()

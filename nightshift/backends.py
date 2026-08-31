@@ -12,6 +12,8 @@ import pathlib
 import re
 import shutil
 import subprocess
+
+from nightshift import mail
 import threading
 import time
 
@@ -162,13 +164,19 @@ def warm_up() -> None:
 PROBE_PROMPT = (
     "Use your gmail tool to list the labels of this mailbox. "
     "Answer with the single word MAIL-OK when the call works. "
-    "Answer with the single word NO-MAIL when you have no gmail tool, or when "
-    "the call fails. Answer with nothing else.")
+    "When you have no gmail tool, or when the call fails, answer NO-MAIL and "
+    "then say why in one short line, with the exact error if there is one. "
+    "The reason matters: a missing permission and a rejected connector look "
+    "the same from outside. Answer with nothing else.")
 
 # Each engine speaks its own CLI. None of them takes an API key: this project
 # runs on subscriptions only.
 PROBE_COMMANDS = {
-    "claude": ["claude", "-p", PROBE_PROMPT, "--output-format", "json"],
+    # The probe needs the same permissions the real cycle uses. Without them a
+    # headless run denies the tool call and the engine answers NO-MAIL, which
+    # made the panel report that the only engine reading the mail could not.
+    "claude": ["claude", "-p", PROBE_PROMPT, "--output-format", "json",
+               "--allowedTools", mail.READ_TOOLS],
     "gemini": ["gemini", "-p", PROBE_PROMPT, "-o", "json",
                "--approval-mode", "yolo"],
     "cursor": ["cursor-agent", "-p", PROBE_PROMPT, "--output-format", "json",

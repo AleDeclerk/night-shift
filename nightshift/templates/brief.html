@@ -179,27 +179,116 @@ form.order button:hover{background:var(--stamp);border-color:var(--stamp)}
 footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
   text-align:center;font-family:"Playfair Display",serif;font-style:italic;
   color:var(--ink-soft);font-size:.9rem}
+
+/* ---- tablero: todo en una pantalla, cada panel con su propio scroll ---- */
+html,body{height:100%}
+body{padding:0;overflow:hidden}
+.board{
+  height:100vh;display:grid;gap:.7rem;padding:.7rem;
+  grid-template-columns:1.05fr 1fr;
+  grid-template-rows:auto minmax(0,1.15fr) minmax(0,1fr) auto;
+  grid-template-areas:
+    "bar      bar"
+    "hands    machines"
+    "hands    done"
+    "order    order";
+}
+.bar{grid-area:bar}.a-hands{grid-area:hands}.a-machines{grid-area:machines}
+.a-done{grid-area:done}.a-order{grid-area:order}
+.panel{
+  border:3px solid var(--rule);background:var(--paper-bright);
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+}
+.panel > .head{
+  flex:none;display:flex;justify-content:space-between;align-items:baseline;
+  gap:.8rem;padding:.5rem .9rem;border-bottom:3px double var(--rule);
+  background:var(--paper);
+}
+.panel > .head h2{
+  font-family:"Playfair Display",serif;font-weight:900;font-size:1rem;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+.panel > .head .count{
+  font-family:"Oswald",sans-serif;font-weight:300;font-size:.58rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);
+}
+.panel > .body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:.8rem .9rem}
+.panel > .body::-webkit-scrollbar{width:9px}
+.panel > .body::-webkit-scrollbar-thumb{background:var(--ink)}
+.panel > .body::-webkit-scrollbar-track{background:var(--paper)}
+
+/* barra superior compacta */
+.bar{display:flex;align-items:center;gap:1rem;border-bottom:6px double var(--rule);
+  padding:.2rem .5rem .6rem;flex-wrap:wrap}
+.bar h1{font-size:1.9rem;line-height:.9;letter-spacing:.05em;white-space:nowrap}
+.bar .thin{display:block;font-size:.3em;letter-spacing:.42em;margin-top:.25rem}
+.bar .tagline{margin:0;font-size:.82rem;flex:1 1 8rem}
+.bar .gear--slow{width:44px;height:44px}
+.bar .gear--fast{width:32px;height:32px;margin-top:.6rem}
+.bar .timecard{margin:0;flex:2 1 26rem;border-width:2px}
+.bar .cell{padding:.4rem .7rem}
+.bar .cell .v{font-size:.95rem}
+.bar .cell .v.small{font-size:.68rem}
+.bar .cell .k{font-size:.54rem}
+.bar .gauge{height:9px;margin-top:.3rem}
+
+/* densidad adentro de los paneles */
+.panel .slug{padding:.7rem .85rem;margin-bottom:.6rem;box-shadow:3px 3px 0 var(--ink)}
+.panel .slug h3{font-size:.86rem;padding-right:4.5rem}
+.panel .slug .why{font-size:.84rem;margin-top:.35rem}
+.panel .slug .foot{margin-top:.5rem;padding-top:.45rem}
+/* Cuatro motores en 2x2: con auto-fit entraban tres y el cuarto quedaba fuera de vista. */
+.panel .machines{grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}
+.panel .engine{padding:.65rem;border-width:2px}
+.panel .engine.on{box-shadow:3px 3px 0 var(--ink)}
+.panel .engine .name{font-size:.86rem}
+.panel .engine .sub{font-size:.64rem}
+.panel .caps{margin-top:.5rem;padding-top:.4rem}
+.panel .caps li{font-size:.62rem;padding:.12rem 0}
+.panel .lever{margin-top:.5rem;padding:.4rem;font-size:.56rem;letter-spacing:.14em}
+.panel .probe{font-size:.6rem}
+.panel details{margin:.6rem 0 0}
+.panel summary{padding:.5rem .8rem;font-size:.6rem}
+.panel .alarm{margin-bottom:.7rem;padding:.6rem .8rem;font-size:.82rem}
+.panel .empty{padding:.6rem;font-size:.86rem}
+
+/* franja inferior de ordenes */
+.a-order{display:flex;gap:.7rem;align-items:flex-end;flex-wrap:wrap;
+  border:3px solid var(--rule);background:var(--paper-bright);padding:.7rem .9rem}
+.a-order form.order{flex:3 1 22rem;margin:0}
+.a-order .assign{flex:2 1 18rem;margin:0;border:0;padding:0;background:none}
+.a-order .assign form{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.a-order .assign label{font-family:"Oswald",sans-serif;font-size:.58rem;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+.a-order .note{margin-top:.35rem;text-align:left;font-size:.72rem}
+.a-order .queued{font-size:.74rem;padding:.15rem 0}
+.a-order button{font-family:"Oswald",sans-serif;font-weight:700;font-size:.6rem;
+  letter-spacing:.18em;text-transform:uppercase;background:var(--ink);
+  color:var(--paper);border:2px solid var(--ink);padding:.45rem 1rem;cursor:pointer}
+
+@media (max-width:900px){
+  body{overflow:auto}
+  .board{height:auto;grid-template-columns:1fr;
+    grid-template-areas:"bar" "hands" "machines" "done" "order"}
+  .panel > .body{max-height:70vh}
+}
 </style>
 </head>
 <body>
-<div class="sheet">
+<div class="board">
 
-<header>
-  <div class="reel">
-    <svg class="gear gear--slow" viewBox="0 0 100 100" aria-hidden="true">
+<div class="bar">
+  <svg class="gear gear--slow" viewBox="0 0 100 100" aria-hidden="true">
       <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
       <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
     </svg>
-    <h1>Night<br>Shift<span class="thin">parte del turno</span></h1>
-    <svg class="gear gear--fast" viewBox="0 0 100 100" aria-hidden="true">
+  <h1>Night Shift<span class="thin">parte del turno</span></h1>
+  <svg class="gear gear--fast" viewBox="0 0 100 100" aria-hidden="true">
       <g fill="#12100e"><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(0 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(30 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(60 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(90 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(120 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(150 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(180 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(210 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(240 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(270 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(300 50 50)"/><rect x="45" y="1" width="10" height="20" rx="1.5" transform="rotate(330 50 50)"/><circle cx="50" cy="50" r="36"/></g>
       <circle cx="50" cy="50" r="13" fill="#ddd7ca"/><circle cx="50" cy="50" r="13" fill="none" stroke="#12100e" stroke-width="3"/>
     </svg>
-  </div>
   <p class="tagline">Los del turno noche.</p>
-</header>
-
-<div class="timecard">
+  <div class="timecard">
   <div class="cell">
     <div class="k">Último turno cerrado</div>
     <div class="v small">{{ last_good }}</div>
@@ -216,16 +305,18 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
     <div class="v small">único con conector</div>
   </div>
 </div>
+</div>
 
-{% if error %}
+<section class="panel a-hands">
+  <div class="head">
+    <h2>Requiere su mano</h2>
+    <div class="count">{{ needs_you|length + jobs_waiting|length }} · pendiente de firma</div>
+  </div>
+  <div class="body">
+    {% if error %}
 <div class="alarm"><b>El último turno falló</b>{{ error }}</div>
 {% endif %}
-
-<div class="card-title">
-  <h2>Requiere su mano</h2>
-  <div class="count">{{ needs_you|length + jobs_waiting|length }} · pendiente de firma</div>
-</div>
-<div class="belt"></div>
+    <div class="belt"></div>
 
 {% for i in needs_you %}
 <article class="slug">
@@ -250,29 +341,17 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
 <p class="empty">Nada requiere su mano.</p>
 {% endif %}
 
-<div class="card-title">
-  <h2>Terminado</h2>
-  <div class="count">{{ done|length + jobs_done|length }} · sin intervención</div>
-</div>
-{% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
-{% for j in jobs_done %}
-<article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
-{% endfor %}
-{% if not done and not jobs_done %}<p class="empty">Todavía nada.</p>{% endif %}
 
-<details>
-  <summary>▸ Revisado, sin acción ({{ no_action|length }})</summary>
-  {% for i in no_action %}
-  <div class="discard"><b>{{ i["title"] }}</b><span>{{ i["body"] }}</span></div>
-  {% endfor %}
-</details>
+  </div>
+</section>
 
-<div class="card-title">
-  <h2>Sala de máquinas</h2>
-  <div class="count">Estado verificado · no declarado</div>
-</div>
-
-<div class="machines">
+<section class="panel a-machines">
+  <div class="head">
+    <h2>Sala de máquinas</h2>
+    <div class="count">Estado verificado · no declarado</div>
+  </div>
+  <div class="body">
+    <div class="machines">
 {% for e in engines %}
   <div class="engine {{ 'on' if e.signed_in else 'off' }}">
     <div class="name">
@@ -309,25 +388,42 @@ footer{margin-top:4rem;padding-top:1.3rem;border-top:6px double var(--rule);
   </div>
 {% endfor %}
 </div>
-
-<div id="signin" hidden>
+    <div id="signin" hidden>
   <div class="head">Ingreso a Cursor</div>
   <div class="msg"></div>
   <a hidden target="_blank" rel="noopener noreferrer">Abrir el ingreso ↗</a>
   <div class="state"></div>
 </div>
+  </div>
+</section>
 
-<p class="note">Claude es el único motor con conector de correo, así que el
-triage y los borradores se quedan en él.</p>
+<section class="panel a-done">
+  <div class="head">
+    <h2>Terminado y descartado</h2>
+    <div class="count">{{ done|length + jobs_done|length }} hechos · {{ no_action|length }} sin acción</div>
+  </div>
+  <div class="body">
+    {% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
+{% for j in jobs_done %}
+<article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
+{% endfor %}
+{% if not done and not jobs_done %}<p class="empty">Todavía nada.</p>{% endif %}
+    <details>
+  <summary>▸ Revisado, sin acción ({{ no_action|length }})</summary>
+  {% for i in no_action %}
+  <div class="discard"><b>{{ i["title"] }}</b><span>{{ i["body"] }}</span></div>
+  {% endfor %}
+</details>
+  </div>
+</section>
 
-<div class="card-title">
-  <h2>Dar una orden</h2>
-  <div class="count">Entra en la cola del próximo turno</div>
-</div>
-
-{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}
-
-<div class="assign">
+<div class="a-order">
+  <form class="order" method="post" action="/jobs">
+  <input name="prompt" placeholder="¿Qué quiere que se haga?">
+  <button type="submit">A la cola</button>
+</form>
+  <div class="assign">
+    <div class="assign">
   <form method="post" action="/machines/engine">
     <label for="job-engine">Motor de los encargos</label>
     <select id="job-engine" name="name">
@@ -340,15 +436,11 @@ triage y los borradores se quedan en él.</p>
   <p class="note">El correo se queda en Claude: es el único motor con conector. El
   motor local es gratis y lento.</p>
 </div>
-
-<form class="order" method="post" action="/jobs">
-  <input name="prompt" placeholder="¿Qué quiere que se haga?">
-  <button type="submit">A la cola</button>
-</form>
-
-<footer>Fin del parte.</footer>
+  </div>
+  <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>
 </div>
 
+</div>
 <script>
 // El enlace de ingreso es una credencial: llega una vez, se usa y no se guarda.
 document.querySelectorAll(".lever[data-engine]").forEach(function (lever) {
