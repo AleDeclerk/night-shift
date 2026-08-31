@@ -299,6 +299,28 @@ dialog#room .close{font-family:"Oswald",sans-serif;font-weight:700;font-size:.6r
 dialog#room .machines{grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.8rem}
 dialog#room .engine{padding:.9rem}
 dialog#room .caps li{font-size:.68rem}
+
+dialog#room .roomassign{
+  margin-top:1.1rem;padding-top:1rem;border-top:3px double var(--rule);
+}
+dialog#room .roomassign h3{
+  font-family:"Oswald",sans-serif;font-weight:700;font-size:.66rem;
+  letter-spacing:.2em;text-transform:uppercase;margin-bottom:.8rem;
+}
+dialog#room .assign{border:0;background:none;padding:0;margin:0}
+dialog#room .assign form{display:flex;gap:.5rem;align-items:center;
+  flex-wrap:wrap;margin-bottom:.4rem}
+dialog#room .assign label{font-family:"Oswald",sans-serif;font-size:.58rem;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);
+  min-width:11rem}
+dialog#room .assign button{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);border:2px solid var(--ink);
+  padding:.42rem .9rem;cursor:pointer}
+dialog#room .assign .note{margin:0 0 1rem;text-align:left;font-size:.78rem}
+
+/* la franja de abajo queda solo para dar ordenes */
+.a-order form.order{flex:1 1 100%}
 </style>
 </head>
 <body>
@@ -401,32 +423,6 @@ dialog#room .caps li{font-size:.68rem}
   <input name="prompt" placeholder="Agendar tareas">
   <button type="submit">A la cola</button>
 </form>
-  <div class="assign">
-    <div class="assign">
-  <form method="post" action="/machines/engine">
-    <label for="job-engine">Motor de los encargos</label>
-    <select id="job-engine" name="name">
-      {% for name in job_engines %}
-      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">El correo se queda en Claude: es el único motor con conector. El
-  motor local es gratis y lento.</p>
-  <form method="post" action="/machines/mail-engine">
-    <label for="mail-engine">Motor que redacta</label>
-    <select id="mail-engine" name="name">
-      {% for name in mail_engines %}
-      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit">Fijar motor</button>
-  </form>
-  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
-  conector. Otro motor sólo escribe el texto de la respuesta.</p>
-</div>
-  </div>
   <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>
 </div>
 
@@ -491,6 +487,36 @@ dialog#room .caps li{font-size:.68rem}
   <a hidden target="_blank" rel="noopener noreferrer">Abrir el ingreso ↗</a>
   <div class="state"></div>
 </div>
+
+    <div class="roomassign">
+      <h3>Quién hace cada trabajo</h3>
+<div class="assign">
+    <div class="assign">
+  <form method="post" action="/machines/engine">
+    <label for="job-engine">Motor de los encargos</label>
+    <select id="job-engine" name="name">
+      {% for name in job_engines %}
+      <option value="{{ name }}" {% if name == job_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">El correo se queda en Claude: es el único motor con conector. El
+  motor local es gratis y lento.</p>
+  <form method="post" action="/machines/mail-engine">
+    <label for="mail-engine">Motor que redacta</label>
+    <select id="mail-engine" name="name">
+      {% for name in mail_engines %}
+      <option value="{{ name }}" {% if name == mail_engine %}selected{% endif %}>{{ name|upper }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Fijar motor</button>
+  </form>
+  <p class="note">Claude siempre busca y guarda el correo: es el único motor con
+  conector. Otro motor sólo escribe el texto de la respuesta.</p>
+</div>
+  </div>
+    </div>
   </div>
 </dialog>
 
