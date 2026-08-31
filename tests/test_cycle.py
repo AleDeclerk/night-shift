@@ -16,9 +16,9 @@ class Stub:
         return TriageResult(self.items, self.cost, self.error)
 
     def write_draft(self, *a, **kw):
-        from nightshift.runner import RunResult
+        from nightshift.mail import DraftResult
         self.drafted += 1
-        return RunResult(True, text="one line", cost_usd=0.8)
+        return DraftResult(0.8, True, "I asked for the three layouts.")
 
 
 def _last_run(conn):
@@ -89,8 +89,7 @@ def test_the_cycle_runs_one_job_and_adds_its_cost(tmp_path, monkeypatch):
 def test_work_already_done_survives_an_item_that_explodes(tmp_path):
     """The inserts used to commit once, after the loop. One exception threw
     away every draft already written and every cost already spent."""
-    from nightshift.mail import Item
-    from nightshift.runner import RunResult
+    from nightshift.mail import DraftResult, Item
     conn = db.connect(tmp_path / "s.db")
 
     class Exploding(Stub):
@@ -98,7 +97,7 @@ def test_work_already_done_survives_an_item_that_explodes(tmp_path):
             self.drafted += 1
             if self.drafted == 2:
                 raise RuntimeError("the tool answered nonsense")
-            return RunResult(True, text="one line", cost_usd=0.8)
+            return DraftResult(0.8, True, "one line")
 
     stub = Exploding(items=[Item("needs_you", "first", "w", "https://x/1"),
                             Item("needs_you", "second", "w", "https://x/2")],
@@ -137,3 +136,43 @@ def test_the_drafts_that_the_budget_stopped_are_visible(tmp_path):
                    now=NOW, ceiling_usd=2.0, workspace=tmp_path)
     titles = [r["title"] for r in conn.execute("SELECT title FROM items")]
     assert any("budget" in t.lower() for t in titles), titles
+
+
+def test_the_item_keeps_the_trace_of_its_draft(tmp_path):
+    """The cycle threw away what the agent said it wrote, so nothing on the
+    page could show that a draft came out empty."""
+    from nightshift.mail import DraftResult, Item
+    conn = db.connect(tmp_path / "s.db")
+
+    class WithNote(Stub):
+        def write_draft(self, *a, **kw):
+            self.drafted += 1
+            return DraftResult(0.8, False, "The agent reported an empty draft.")
+
+    stub = WithNote(items=[Item("needs_you", "Shannon", "3 layouts.",
+                                "https://x/1")], cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    body = conn.execute("SELECT body FROM items").fetchone()[0]
+    assert "3 layouts." in body        # the reason stays
+    assert "empty draft" in body.lower()  # and the trouble is visible
+
+
+def test_a_message_already_seen_gets_no_second_draft(tmp_path):
+    """The triage reads a 24 hour window and the scheduler runs twice a day,
+    so every message arrives at least twice. Without this the user collects
+    duplicate drafts for the same mail."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    same = [Item("needs_you", "Shannon: deck", "3 layouts.", "https://x/1")]
+
+    first = Stub(items=same, cost=0.5)
+    cycle.run_once(conn, runner_module=first, mail_module=first,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    second = Stub(items=same, cost=0.5)
+    cycle.run_once(conn, runner_module=second, mail_module=second,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+
+    assert first.drafted == 1
+    assert second.drafted == 0  # the same message, no second draft
+    assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 1

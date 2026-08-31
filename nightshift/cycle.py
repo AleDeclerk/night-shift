@@ -40,6 +40,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # away every draft already written and every dollar already spent.
     stopped_by_budget = 0
     for item in result.items:
+        # The triage reads a 24 hour window and the scheduler runs twice a
+        # day, so every message comes back at least once. A message that
+        # already has an item keeps its old card and gets no second draft.
+        if conn.execute("SELECT 1 FROM items WHERE source_url = ? LIMIT 1",
+                        (item.source_url,)).fetchone():
+            continue
+
+        body = item.body
         try:
             if item.bucket == "needs_you":
                 # The ceiling is checked here too, not only before the cycle.
@@ -51,10 +59,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                     draft = mail_module.write_draft(runner_module, item,
                                                     cwd=workspace)
                     spent += draft.cost_usd
+                    # The trace of the draft rides with the item. Without it
+                    # an empty draft looks the same as a written one.
+                    mark = "Draft: " if draft.ok else "NO DRAFT. "
+                    body = f"{item.body}\n\n{mark}{draft.note}"
             conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
                 " source_url) VALUES (?,?,?,?,?,?)",
-                (run_id, now.isoformat(), item.bucket, item.title, item.body,
+                (run_id, now.isoformat(), item.bucket, item.title, body,
                  item.source_url))
             conn.commit()
         except Exception as exc:  # noqa: BLE001

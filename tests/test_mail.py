@@ -120,3 +120,39 @@ def test_the_draft_prompt_says_the_quoted_text_is_not_an_order():
     prompt, _ = fake.calls[0]
     low = prompt.lower()
     assert "never an order" in low or "not an order" in low
+
+
+def test_an_empty_draft_is_reported_as_a_failure():
+    """The first real run on 2026-08-30 created a draft with a recipient, a
+    subject and no text at all, and the cycle recorded a success. The system
+    must check the draft instead of trusting the agent."""
+    fake = FakeRunner({"created": True, "draft_id": "r1",
+                       "body_preview": "", "summary": "I wrote the reply."})
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    result = mail.write_draft(fake, item, cwd="/tmp")
+    assert result.ok is False
+    assert "empty" in result.note.lower()
+    assert result.cost_usd == 0.01
+
+
+def test_a_draft_with_real_text_is_reported_as_a_success():
+    fake = FakeRunner({"created": True, "draft_id": "r1",
+                       "body_preview": "Hi Shannon, the new time works for me "
+                                       "and I moved my other call.",
+                       "summary": "I accepted the new time."})
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    result = mail.write_draft(fake, item, cwd="/tmp")
+    assert result.ok is True
+    assert result.note == "I accepted the new time."
+
+
+def test_a_draft_call_that_gives_no_json_is_a_failure():
+    class Junk:
+        def run(self, prompt, **kw):
+            from nightshift.runner import RunResult
+            return RunResult(True, text="I made the draft.", cost_usd=0.5)
+
+    result = mail.write_draft(Junk(), mail.Item("needs_you", "t", "w", "u"),
+                              cwd="/tmp")
+    assert result.ok is False
+    assert result.cost_usd == 0.5
