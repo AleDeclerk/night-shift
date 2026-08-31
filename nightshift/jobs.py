@@ -76,6 +76,21 @@ def fail(conn: sqlite3.Connection, job_id: int, error: str) -> None:
     conn.commit()
 
 
+def answer(conn: sqlite3.Connection, job_id: int, text: str) -> None:
+    """The user answered the question a stopped job asked. Back to the
+    queue it goes, so the next cycle picks it up again."""
+    conn.execute("UPDATE jobs SET answer=?, state='queued' WHERE id=?",
+                 (text, job_id))
+    conn.commit()
+
+
+def retry(conn: sqlite3.Connection, job_id: int) -> None:
+    """A failed job, tried again. `fail` never re-queues on its own, so a
+    person has to ask for this by hand."""
+    conn.execute("UPDATE jobs SET state='queued' WHERE id=?", (job_id,))
+    conn.commit()
+
+
 def run_next(conn, runner_module, workspace,
              engine: str = engines.DEFAULT_ENGINE) -> float:
     """Run the oldest queued job. It returns what the run spent.

@@ -351,3 +351,99 @@ def test_the_room_shows_the_three_roles_together(tmp_path):
     assert "Redacta la respuesta" in room
     assert "Hace los encargos" in room
     assert "<select disabled>" in room     # the mail fetch cannot be moved
+
+
+# --- the life of an item -----------------------------------------------
+
+def _open_item(conn) -> int:
+    conn.execute("INSERT INTO runs (started_at, kind, ok) VALUES ('x','mail',1)")
+    cur = conn.execute(
+        "INSERT INTO items (run_id, created_at, bucket, title, body,"
+        " source_url) VALUES (1,'x','needs_you','Shannon: deck',"
+        "'She asks for 3 layouts.','https://x/1')")
+    conn.commit()
+    return cur.lastrowid
+
+
+def test_posting_a_closing_verb_moves_the_item_out_of_pendiente(tmp_path):
+    for verb in ("listo", "lo_hago_yo", "no_era_nada", "manana"):
+        conn = db.connect(tmp_path / f"s-{verb}.db")
+        item_id = _open_item(conn)
+        client = TestClient(web.make_app(conn, engine_source=_engines,
+                                         ceiling_usd=5.0))
+        r = client.post(f"/items/{item_id}/{verb}", follow_redirects=False)
+        assert r.status_code == 303
+        pendiente = client.get("/").text.split(
+            '<section class="panel a-done">')[0]
+        assert "Shannon: deck" not in pendiente, verb
+
+
+def test_an_unknown_verb_answers_without_changing_anything(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+    r = client.post(f"/items/{item_id}/send_it", follow_redirects=False)
+    assert r.status_code == 303
+    assert conn.execute("SELECT state FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0] == "pending"
+    assert "Shannon: deck" in client.get("/").text
+
+
+def test_the_page_shows_the_five_buttons_under_an_item(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    _open_item(conn)
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    for label in ("Listo", "Lo hago yo", "No era nada", "Mañana", "Rehacer"):
+        assert label in body, label
+
+
+def test_rehacer_writes_a_new_draft_and_the_item_stays_pending(
+        tmp_path, monkeypatch):
+    """The dedicated route, not the generic one: it must also compose and
+    save a new draft, with no real engine ever touched in a test."""
+    from nightshift import web as web_module
+    from nightshift.mail import DraftResult
+
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+
+    def fake_write_draft(runner_module, item, cwd):
+        return DraftResult(0.4, True, "Redone.")
+
+    monkeypatch.setattr(web_module.mail, "write_draft", fake_write_draft)
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+    r = client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    assert r.status_code == 303
+
+    row = conn.execute("SELECT state FROM items WHERE id=?",
+                       (item_id,)).fetchone()
+    assert row["state"] == "pending"
+    event = conn.execute(
+        "SELECT * FROM events WHERE kind='draft_written' AND item_id=?",
+        (item_id,)).fetchone()
+    assert event is not None
+    assert event["engine"] == "claude"
+    assert "Shannon: deck" in client.get("/").text  # still in Pendiente
+
+
+# --- the life of a job ---------------------------------------------------
+
+def test_answering_a_stopped_job_puts_it_back_in_the_queue(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state, question)"
+                 " VALUES ('x','Prepare the sprint review','needs_you',"
+                 "'Which sprint number?')")
+    conn.commit()
+    job_id = conn.execute("SELECT id FROM jobs").fetchone()[0]
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+    r = client.post(f"/jobs/{job_id}/answer", data={"answer": "Sprint 11"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    row = conn.execute("SELECT state, answer FROM jobs WHERE id=?",
+                       (job_id,)).fetchone()
+    assert row["state"] == "queued"
+    assert row["answer"] == "Sprint 11"

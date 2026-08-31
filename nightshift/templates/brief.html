@@ -139,6 +139,24 @@ details[open] summary{border-bottom:1px dashed var(--ink-soft)}
 .note{font-family:"Playfair Display",serif;font-style:italic;color:var(--ink-soft);
   margin-top:1.1rem;text-align:center;font-size:.94rem}
 
+/* fila de veredictos bajo cada pieza de Pendiente: mismo look del .lever,
+   en fila y mas chico, porque acá van cinco juntos y no uno solo */
+.slug .levers{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.8rem;
+  padding-top:.7rem;border-top:1px dashed var(--ink-soft)}
+.slug .levers form{flex:0 0 auto}
+.slug .levers .lever{display:inline-block;width:auto;margin-top:0;
+  padding:.35rem .6rem;font-size:.56rem;letter-spacing:.12em}
+.slug .verdict{font-family:"Oswald",sans-serif;font-size:.68rem;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+  margin-top:.35rem}
+.slug .verdict b{color:var(--ink)}
+.slug .jobanswer{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem}
+.slug .jobanswer input{flex:1 1 10rem;font-family:"Courier Prime",monospace;
+  font-size:.82rem;background:var(--paper);border:2px solid var(--ink);
+  padding:.4rem .55rem;color:var(--ink)}
+.slug .jobanswer input::placeholder{color:var(--ink-soft);font-style:italic}
+.slug .jobanswer button{flex:0 0 auto}
+
 .probe{margin-top:.85rem;padding-top:.75rem;border-top:1px dashed var(--ink-soft);
   font-family:"Courier Prime",monospace;font-size:.68rem;color:var(--ink-soft);line-height:1.5}
 .probe .ok{font-weight:700;color:var(--ink)}
@@ -442,6 +460,24 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
     <span class="stamp">Correo</span>
     <a class="src" href="/open/{{ i['id'] }}">Ver original ↗</a>
   </div>
+  <div class="levers">
+    <form method="post" action="/items/{{ i['id'] }}/listo">
+      <button class="lever" type="submit">Listo</button>
+    </form>
+    <form method="post" action="/items/{{ i['id'] }}/lo_hago_yo">
+      <button class="lever" type="submit">Lo hago yo</button>
+    </form>
+    <form method="post" action="/items/{{ i['id'] }}/no_era_nada">
+      <button class="lever" type="submit">No era nada</button>
+    </form>
+    <form method="post" action="/items/{{ i['id'] }}/manana">
+      <button class="lever" type="submit">Mañana</button>
+    </form>
+    <form method="post" action="/items/{{ i['id'] }}/rehacer">
+      <button class="lever" type="submit">Rehacer ·
+        {% if mail_engine == 'ollama' %}gratis, lento{% else %}gasta cuota{% endif %}</button>
+    </form>
+  </div>
 </article>
 {% endfor %}
 {% for j in jobs_waiting %}
@@ -449,7 +485,27 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
   <span class="no">Encargo</span>
   <h3>{{ j["prompt"] }}</h3>
   <p class="why">{{ j["question"] }}</p>
-  <div class="foot"><span class="stamp stamp--bad">Máquina detenida</span></div>
+  <div class="foot">
+    <span class="stamp stamp--bad">
+      {% if j["state"] == "failed" %}Máquina falló{% else %}Máquina detenida{% endif %}
+    </span>
+  </div>
+  {% if j["state"] == "needs_you" %}
+  <form class="jobanswer" method="post" action="/jobs/{{ j['id'] }}/answer">
+    <input name="answer" placeholder="Responda la pregunta" required>
+    <button class="lever" type="submit">Responder</button>
+  </form>
+  {% endif %}
+  <div class="levers">
+    {% if j["state"] == "failed" %}
+    <form method="post" action="/jobs/{{ j['id'] }}/retry">
+      <button class="lever" type="submit">Reintentar</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/jobs/{{ j['id'] }}/cancel">
+      <button class="lever" type="submit">Cancelar</button>
+    </form>
+  </div>
 </article>
 {% endfor %}
 {% if not needs_you and not jobs_waiting %}
@@ -467,7 +523,16 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
     <div class="count">{{ done|length + jobs_done|length }} hechos · {{ no_action|length }} sin acción</div>
   </div>
   <div class="body">
-    {% for i in done %}<article class="slug"><h3>{{ i["title"] }}</h3></article>{% endfor %}
+    {% set verb_labels = {"listo": "Listo", "lo_hago_yo": "Lo hizo a mano",
+      "no_era_nada": "No era nada", "manana": "A mañana",
+      "rehacer": "Rehecho"} %}
+    {% for i in done %}
+<article class="slug">
+  <h3>{{ i["title"] }}</h3>
+  <p class="verdict"><b>{{ verb_labels.get(i["verb"], i["verb"] or "?") }}</b>
+    {% if i["closed_at"] %} · {{ i["closed_at"]|when }}{% endif %}</p>
+</article>
+{% endfor %}
 {% for j in jobs_done %}
 <article class="slug"><h3>{{ j["prompt"] }}</h3><p class="why">{{ j["answer"] }}</p></article>
 {% endfor %}

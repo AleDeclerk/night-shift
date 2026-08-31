@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import backends, engines, jobs, quota, signin
+from nightshift import backends, engines, jobs, life, mail, quota, runner, signin
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -83,8 +83,8 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         ).fetchone()
         spent = quota.spent_this_week(conn, dt.datetime.now())
         return TEMPLATES.TemplateResponse(request, "brief.html", {
-            "needs_you": bucket("needs_you"),
-            "done": bucket("done"),
+            "needs_you": life.open_items(conn),
+            "done": life.closed_items(conn),
             "no_action": bucket("no_action"),
             "error": _trouble(last),
             "last_good": _when(good["started_at"]) if good else "never",
@@ -114,6 +114,56 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         conn.commit()
         return RedirectResponse(row["source_url"] if row else "/",
                                 status_code=303)
+
+    # Registered before the generic /items/{item_id}/{verb} below: Starlette
+    # matches routes in the order they were added, and "rehacer" needs its
+    # own handler because it writes a new draft, not only a new state.
+    @app.post("/items/{item_id}/rehacer")
+    def redo_item(item_id: int):
+        row = conn.execute("SELECT * FROM items WHERE id=?",
+                           (item_id,)).fetchone()
+        if row is not None:
+            item = mail.Item(bucket=row["bucket"], title=row["title"],
+                             body=row["body"] or "",
+                             source_url=row["source_url"] or "",
+                             excerpt=row["excerpt"] or "")
+            mail_engine = engines.get_mail_engine(conn)
+            # The same call the cycle makes: Claude composes and saves in one
+            # go, any other engine composes and Claude saves it.
+            cost, ok, note = mail.reply_cost_and_trace(
+                mail, runner, item, engine=mail_engine, cwd=backends.WORKSPACE)
+            if ok:
+                life.record(conn, "draft_written", item_id=item_id,
+                            engine=mail_engine, cost_usd=cost, detail=note)
+            life.apply_verb(conn, item_id, "rehacer")
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/items/{item_id}/{verb}")
+    def act(item_id: int, verb: str):
+        try:
+            life.apply_verb(conn, item_id, verb)
+        except ValueError:
+            pass          # an unknown verb changes nothing
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/{job_id}/answer")
+    def answer_job(job_id: int, answer: str = Form(...)):
+        jobs.answer(conn, job_id, answer)
+        life.record(conn, "job_queued", job_id=job_id, detail=answer)
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/{job_id}/cancel")
+    def cancel_job(job_id: int):
+        jobs.fail(conn, job_id, "The user cancelled it.")
+        life.record(conn, "job_failed", job_id=job_id,
+                    detail="cancelled by the user")
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/{job_id}/retry")
+    def retry_job(job_id: int):
+        jobs.retry(conn, job_id)
+        life.record(conn, "job_queued", job_id=job_id, detail="retry")
+        return RedirectResponse("/", status_code=303)
 
     @app.get("/machines/cursor/login/status")
     def signin_status():

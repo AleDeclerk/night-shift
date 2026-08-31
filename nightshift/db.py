@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS items (
   body       TEXT,
   source_url TEXT,
   opened_at  TEXT,
-  excerpt    TEXT
+  excerpt    TEXT,
+  state         TEXT NOT NULL DEFAULT 'pending',
+  closed_at     TEXT,
+  snoozed_until TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id          INTEGER PRIMARY KEY,
@@ -45,6 +48,17 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (
+  id       INTEGER PRIMARY KEY,
+  at       TEXT NOT NULL,
+  kind     TEXT NOT NULL,
+  item_id  INTEGER,
+  job_id   INTEGER,
+  verb     TEXT,
+  engine   TEXT,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  detail   TEXT
+);
 """
 
 
@@ -52,11 +66,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
     """CREATE TABLE IF NOT EXISTS never adds a column to a table that
     already exists. Measured on 2026-08-31: the live state.db under
     ~/.night-shift predates `excerpt`, and the next scheduled cycle would
-    crash on the first insert without this.
+    crash on the first insert without this. The same is true of `state`,
+    `closed_at` and `snoozed_until`, added for the life of a task: a live
+    database has real rows, and a missing column would crash the next
+    scheduled cycle at 06:30.
     """
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(items)")}
     if "excerpt" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN excerpt TEXT")
+    if "state" not in cols:
+        conn.execute(
+            "ALTER TABLE items ADD COLUMN state TEXT NOT NULL DEFAULT 'pending'")
+    if "closed_at" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN closed_at TEXT")
+    if "snoozed_until" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN snoozed_until TEXT")
 
 
 def connect(path: pathlib.Path) -> sqlite3.Connection:

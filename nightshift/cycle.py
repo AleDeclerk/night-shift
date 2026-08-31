@@ -2,7 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import engines, jobs, quota
+from nightshift import engines, jobs, life, mail, quota
 
 
 def _start_run(conn, now, kind) -> int:
@@ -17,27 +17,10 @@ def _end_run(conn, run_id, ok, cost=0.0, error=None) -> None:
         "UPDATE runs SET finished_at=?, ok=?, cost_usd=?, error=? WHERE id=?",
         (dt.datetime.now().isoformat(), 1 if ok else 0, cost, error, run_id))
     conn.commit()
-
-
-def _reply_cost_and_trace(mail_module, runner_module, item, mail_engine,
-                          workspace):
-    """Claude composes and saves in one call: it is the only engine that
-    reaches Gmail. Any other engine only writes the text, and Claude still
-    has to save it, so a failed compose never reaches save_draft.
-
-    Returns (cost_usd, ok, note), the same trio that a plain `write_draft`
-    call hands back.
-    """
-    if mail_engine == "claude":
-        draft = mail_module.write_draft(runner_module, item, cwd=workspace)
-        return draft.cost_usd, draft.ok, draft.note
-    composed = mail_module.compose(item, engine=mail_engine, cwd=workspace)
-    if not composed.ok:
-        return (composed.cost_usd, False,
-                f"The compose call failed: {composed.error}")
-    draft = mail_module.save_draft(runner_module, item, composed.text,
-                                   cwd=workspace)
-    return composed.cost_usd + draft.cost_usd, draft.ok, draft.note
+    # One `cycle_ran` event per run, on every exit of this function, so the
+    # weekly board reads the same history whether the cycle finished clean or
+    # stopped early on quota or on a broken tool.
+    life.record(conn, "cycle_ran", cost_usd=cost, detail=error)
 
 
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
@@ -77,6 +60,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             continue
 
         body = item.body
+        draft_ok, draft_cost = False, 0.0
         try:
             if item.bucket == "needs_you":
                 # The ceiling is checked here too, not only before the cycle.
@@ -85,20 +69,27 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                 if decision.spent_usd + spent >= ceiling_usd:
                     stopped_by_budget += 1
                 else:
-                    cost, ok, note = _reply_cost_and_trace(
-                        mail_module, runner_module, item, mail_engine,
-                        workspace)
+                    cost, ok, note = mail.reply_cost_and_trace(
+                        mail_module, runner_module, item, engine=mail_engine,
+                        cwd=workspace)
                     spent += cost
+                    draft_ok, draft_cost = ok, cost
                     # The trace of the draft rides with the item. Without it
                     # an empty draft looks the same as a written one.
                     mark = "Draft: " if ok else "NO DRAFT. "
                     body = f"{item.body}\n\n{mark}{note}"
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
                 " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",
                 (run_id, now.isoformat(), item.bucket, item.title, body,
                  item.source_url, item.excerpt))
             conn.commit()
+            item_id = cur.lastrowid
+            life.record(conn, "item_found", item_id=item_id,
+                        detail=item.bucket)
+            if draft_ok:
+                life.record(conn, "draft_written", item_id=item_id,
+                            engine=mail_engine, cost_usd=draft_cost)
         except Exception as exc:  # noqa: BLE001
             _end_run(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400])

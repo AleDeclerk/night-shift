@@ -1,6 +1,6 @@
 import datetime as dt
 
-from nightshift import cycle, db
+from nightshift import cycle, db, life
 
 NOW = dt.datetime(2026, 8, 26, 3, 0)
 
@@ -279,3 +279,62 @@ def test_a_failed_compose_skips_save_draft_and_the_item_says_so(tmp_path):
     body = conn.execute("SELECT body FROM items").fetchone()[0]
     assert "NO DRAFT" in body
     assert "dsh is not installed" in body
+
+
+# --- the life of an item, seen from the cycle -------------------------
+
+def test_a_closed_item_does_not_come_back_when_the_cycle_runs_again(
+        tmp_path):
+    """A closed item is still a message with a source_url. The next cycle
+    must not read it as new mail and write a second draft for it."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    same = [Item("needs_you", "Shannon: deck", "3 layouts.", "https://x/1")]
+
+    first = Stub(items=same, cost=0.5)
+    cycle.run_once(conn, runner_module=first, mail_module=first,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    item_id = conn.execute("SELECT id FROM items").fetchone()[0]
+    life.apply_verb(conn, item_id, "listo", now=NOW)
+
+    second = Stub(items=same, cost=0.5)
+    cycle.run_once(conn, runner_module=second, mail_module=second,
+                   now=NOW + dt.timedelta(days=1), ceiling_usd=45.0,
+                   workspace=tmp_path)
+
+    assert second.drafted == 0
+    assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 1
+    assert conn.execute("SELECT state FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0] == "done"
+
+
+def test_the_cycle_writes_item_found_and_cycle_ran_events(tmp_path):
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(items=[Item("needs_you", "Shannon: deck", "3 layouts.",
+                            "https://x/1"),
+                       Item("no_action", "AWS bill", "receipt.",
+                            "https://x/2")], cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path)
+
+    found = conn.execute(
+        "SELECT count(*) FROM events WHERE kind='item_found'").fetchone()[0]
+    assert found == 2
+
+    ran = conn.execute(
+        "SELECT * FROM events WHERE kind='cycle_ran'").fetchall()
+    assert len(ran) == 1
+    assert ran[0]["cost_usd"] == 1.3  # 0.5 triage + 0.8 draft, as above
+
+
+def test_a_cycle_that_fails_still_writes_one_cycle_ran_event(tmp_path):
+    """`cycle_ran` mirrors the runs table on every exit, not only a clean
+    one: the weekly board must see a stopped cycle too."""
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(error="401 OAuth access token has expired")
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path)
+    ran = conn.execute(
+        "SELECT * FROM events WHERE kind='cycle_ran'").fetchall()
+    assert len(ran) == 1
