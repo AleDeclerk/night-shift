@@ -13,9 +13,11 @@ import subprocess
 from nightshift import backends
 
 JOB_ENGINES = ("claude", "cursor", "ollama")   # gemini cannot run
+MAIL_ENGINES = ("claude", "cursor", "ollama")
 DEFAULT_ENGINE = "claude"
 
 SETTINGS_KEY = "job_engine"
+MAIL_SETTINGS_KEY = "mail_engine"
 
 # Case-insensitive markers of a call that failed, even when the process exits
 # clean and prints something that looks like an answer. Defined once, in

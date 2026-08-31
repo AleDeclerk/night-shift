@@ -146,3 +146,23 @@ def test_the_mail_work_needs_a_session_and_a_connector():
     # Cursor holds the connector and no session, so it cannot do the work yet.
     assert engines["cursor"].sees_mail is True
     assert engines["cursor"].mail_capable is False
+
+
+def test_a_local_engine_can_work_the_mail_without_a_connector():
+    """The panel said `Ve el correo: NO` for Ollama and that read as "this
+    engine is useless for mail". It is not: Claude fetches, and any engine with
+    a session reads the stored mail and writes the reply. Only the connector is
+    exclusive."""
+    engines = {e.name: e for e in backends.check_all(runner=_fake({
+        "claude auth status": '{"loggedIn": true}',
+        "claude mcp list": "claude.ai Gmail - Connected",
+        "ollama list": "NAME\nqwen3.8:27b-mlx\n"}))}
+    assert engines["ollama"].sees_mail is False        # no connector, true
+    assert engines["ollama"].can_work_mail is True     # and it can still work
+    assert engines["claude"].can_work_mail is True
+
+
+def test_an_engine_with_no_session_cannot_work_the_mail():
+    engines = {e.name: e for e in backends.check_all(runner=_fake({
+        "cursor-agent status": "Not logged in"}))}
+    assert engines["cursor"].can_work_mail is False

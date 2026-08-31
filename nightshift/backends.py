@@ -37,8 +37,12 @@ class Engine:
     signed_in: bool | None      # None means unknown, never a guess
     sees_mail: bool
     forced_schema: bool
-    mail_capable: bool
+    mail_capable: bool      # holds the connector AND a session: it can fetch
     can_sign_in: bool
+    # Fetching needs the connector, which only Claude has. Reading the stored
+    # mail and writing the reply need neither: the text arrives in the prompt,
+    # or through `scripts/ns-mail`. So a local engine works the mail too.
+    can_work_mail: bool = False
 
 
 # Cursor approves an MCP server per directory, so a check that runs somewhere
@@ -78,7 +82,8 @@ def _claude(runner) -> Engine:
     return Engine("claude", "Claude", "Max subscription",
                   installed=bool(shutil.which("claude")), signed_in=signed,
                   sees_mail=mail, forced_schema=True,
-                  mail_capable=mail and signed is not False, can_sign_in=False)
+                  mail_capable=mail and signed is not False, can_sign_in=False,
+                  can_work_mail=signed is not False)
 
 
 def _gemini(runner) -> Engine:
@@ -98,7 +103,8 @@ def _gemini(runner) -> Engine:
     return Engine("gemini", "Gemini", "Personal Google account",
                   installed=bool(shutil.which("gemini")), signed_in=signed,
                   sees_mail=mail, forced_schema=False,
-                  mail_capable=mail and signed is True, can_sign_in=False)
+                  mail_capable=mail and signed is True, can_sign_in=False,
+                  can_work_mail=signed is True)
 
 
 def _cursor(runner, workspace=None) -> Engine:
@@ -112,7 +118,8 @@ def _cursor(runner, workspace=None) -> Engine:
                   installed=bool(shutil.which("cursor-agent")),
                   signed_in=signed, sees_mail=mail, forced_schema=False,
                   mail_capable=mail and signed is True,
-                  can_sign_in=signed is not True)
+                  can_sign_in=signed is not True,
+                  can_work_mail=signed is True)
 
 
 def _ollama(runner) -> Engine:
@@ -122,7 +129,8 @@ def _ollama(runner) -> Engine:
                   installed=bool(shutil.which("ollama")),
                   signed_in=None if out is None else True,
                   sees_mail=False, forced_schema=True,
-                  mail_capable=False, can_sign_in=False)
+                  mail_capable=False, can_sign_in=False,
+                  can_work_mail=out is not None)
 
 
 def _fresh(runner, workspace=None) -> list[Engine]:
