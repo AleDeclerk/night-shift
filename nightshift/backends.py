@@ -36,22 +36,27 @@ class Engine:
     can_sign_in: bool
 
 
-def _shell(args, runner=None) -> str:
+# Cursor approves an MCP server per directory, so a check that runs somewhere
+# else measures a different machine than the one the runner uses.
+WORKSPACE = pathlib.Path.home() / ".night-shift" / "workspace"
+
+
+def _shell(args, runner=None, cwd=None) -> str:
     """Run a cheap command and give its text."""
     if runner is not None:
-        return runner(args)
+        return runner(args, cwd=cwd)
     try:
         out = subprocess.run(args, capture_output=True, text=True,
-                             timeout=CHEAP_TIMEOUT)
+                             timeout=CHEAP_TIMEOUT, cwd=cwd)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise TimeoutError(str(exc)) from exc
     return (out.stdout or "") + (out.stderr or "")
 
 
-def _safe(args, runner=None) -> str | None:
+def _safe(args, runner=None, cwd=None) -> str | None:
     try:
-        return _shell(args, runner)
-    except TimeoutError:
+        return _shell(args, runner, cwd)
+    except (TimeoutError, OSError):
         return None
 
 
@@ -64,10 +69,11 @@ def _claude(runner) -> Engine:
         except (json.JSONDecodeError, AttributeError):
             signed = None
     mcp = _safe(["claude", "mcp", "list"], runner) or ""
+    mail = "Gmail" in mcp
     return Engine("claude", "Claude", "Max subscription",
                   installed=bool(shutil.which("claude")), signed_in=signed,
-                  sees_mail="Gmail" in mcp, forced_schema=True,
-                  mail_capable=True, can_sign_in=False)
+                  sees_mail=mail, forced_schema=True,
+                  mail_capable=mail and signed is not False, can_sign_in=False)
 
 
 def _gemini(runner) -> Engine:
@@ -81,19 +87,27 @@ def _gemini(runner) -> Engine:
         except (json.JSONDecodeError, OSError):
             signed = None
     mcp = _safe(["gemini", "mcp", "list"], runner) or ""
+    # A connector counts only when the server answers. `gemini mcp list` marks
+    # a live one as Connected.
+    mail = "gmail" in mcp.lower() and "connected" in mcp.lower()
     return Engine("gemini", "Gemini", "Personal Google account",
                   installed=bool(shutil.which("gemini")), signed_in=signed,
-                  sees_mail="Gmail" in mcp, forced_schema=False,
-                  mail_capable=False, can_sign_in=False)
+                  sees_mail=mail, forced_schema=False,
+                  mail_capable=mail and signed is True, can_sign_in=False)
 
 
-def _cursor(runner) -> Engine:
-    out = _safe(["cursor-agent", "status"], runner)
+def _cursor(runner, workspace=None) -> Engine:
+    where = str(workspace or WORKSPACE)
+    out = _safe(["cursor-agent", "status"], runner, cwd=where)
     signed = None if out is None else "not logged in" not in out.lower()
+    mcp = _safe(["cursor-agent", "mcp", "list"], runner, cwd=where) or ""
+    # `cursor-agent mcp list` marks an approved and loaded server as ready.
+    mail = "gmail" in mcp.lower() and "ready" in mcp.lower()
     return Engine("cursor", "Cursor", "cursor-agent",
                   installed=bool(shutil.which("cursor-agent")),
-                  signed_in=signed, sees_mail=False, forced_schema=False,
-                  mail_capable=False, can_sign_in=signed is not True)
+                  signed_in=signed, sees_mail=mail, forced_schema=False,
+                  mail_capable=mail and signed is True,
+                  can_sign_in=signed is not True)
 
 
 def _ollama(runner) -> Engine:
@@ -106,8 +120,9 @@ def _ollama(runner) -> Engine:
                   mail_capable=False, can_sign_in=False)
 
 
-def _fresh(runner) -> list[Engine]:
-    return [_claude(runner), _gemini(runner), _cursor(runner), _ollama(runner)]
+def _fresh(runner, workspace=None) -> list[Engine]:
+    return [_claude(runner), _gemini(runner), _cursor(runner, workspace),
+            _ollama(runner)]
 
 
 def invalidate() -> None:
@@ -116,18 +131,19 @@ def invalidate() -> None:
         _CACHE["engines"] = None
 
 
-def check_all(runner=None, use_cache: bool | None = None) -> list[Engine]:
+def check_all(runner=None, use_cache: bool | None = None,
+              workspace=None) -> list[Engine]:
     """An injected runner means "look again", so it skips the cache by
     default. Otherwise one test would hand its answer to the next one."""
     if use_cache is None:
         use_cache = runner is None
     if not use_cache:
-        return _fresh(runner)
+        return _fresh(runner, workspace)
     with _CACHE_LOCK:
         held = _CACHE["engines"]
         if held is not None and time.monotonic() - _CACHE["at"] < CACHE_SECONDS:
             return held
-    engines = _fresh(runner)
+    engines = _fresh(runner, workspace)
     with _CACHE_LOCK:
         _CACHE.update(at=time.monotonic(), engines=engines)
     return engines
