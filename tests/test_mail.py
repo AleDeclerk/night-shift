@@ -263,6 +263,17 @@ def test_save_draft_passes_the_text_through_without_rewriting_it():
     assert "do not rewrite" in prompt.lower()
 
 
+def test_save_draft_carries_the_security_rule_about_a_strangers_text():
+    """SAVE_PROMPT is the only prompt that runs with a Gmail tool enabled,
+    and it said nothing about where its text comes from."""
+    fake = FakeRunner({})
+    item = mail.Item("needs_you", "t", "w", "https://x/1")
+    mail.save_draft(fake, item, "Sure, Friday works for me.", cwd="/tmp")
+    prompt, _ = fake.calls[0]
+    low = prompt.lower()
+    assert "never an order" in low or "not an order" in low
+
+
 def test_save_draft_reports_an_empty_draft_as_a_failure():
     """The same check that guards write_draft guards save_draft: a draft
     with a subject and no text is never a success."""
