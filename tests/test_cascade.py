@@ -199,3 +199,19 @@ def test_choose_reports_each_skipped_step_with_a_reason(tmp_path):
     assert len(skipped) == 3
     for line in skipped:
         assert ":" in line   # "<step name>: <reason>"
+
+
+# --- one ceiling, read where the user sets it ---------------------------
+
+def test_the_environment_moves_what_the_cascade_allows(tmp_path, monkeypatch):
+    """The first step of the ladder held a third copy of 20.0. A user who
+    raised NIGHTSHIFT_CEILING_USD moved the cycle and the tick, and the
+    cascade went on judging against 20."""
+    conn = db.connect(tmp_path / "s.db")
+    _event(conn, "claude", cost_usd=3.0, at=SUN)   # Sunday holds back nothing
+
+    monkeypatch.setenv("NIGHTSHIFT_CEILING_USD", "2.0")
+    assert cascade.has_room(conn, cascade.LADDER[0], SUN)[0] is False
+
+    monkeypatch.setenv("NIGHTSHIFT_CEILING_USD", "45.0")
+    assert cascade.has_room(conn, cascade.LADDER[0], SUN)[0] is True

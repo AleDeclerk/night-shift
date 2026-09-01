@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """launchd calls this file every hour. It runs one tick and it exits."""
 import datetime as dt
-import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from nightshift import db, runner, tick  # noqa: E402
+from nightshift import db, quota, runner, tick  # noqa: E402
 
 HOME = pathlib.Path.home() / ".night-shift"
-CEILING_USD = float(os.environ.get("NIGHTSHIFT_CEILING_USD", "20.0"))
+CEILING_USD = quota.ceiling_usd()
 
 if __name__ == "__main__":
     HOME.mkdir(exist_ok=True)

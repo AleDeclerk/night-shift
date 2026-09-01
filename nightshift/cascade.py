@@ -17,20 +17,32 @@ class Step:
     engine: str        # the CLI: "claude" | "cursor" | "ollama"
     model: str | None  # the --model value, None for claude and ollama
     unit: str           # "usd" for claude, "calls" for cursor, "none" for local
-    ceiling: float       # 20.0 usd, 60 calls, 0 for the local one
+    # 60 calls for cursor, 0 for the local one. None means "the weekly ceiling
+    # the user sets", which `ceiling_of` reads from quota at call time.
+    ceiling: float | None
 
 
 # Grok and Flash both speak through cursor-agent and share one subscription,
 # so `has_room` counts their spend together, under the CLI name "cursor", not
 # once per step. Only the model asked of cursor-agent tells them apart.
 LADDER = (
-    Step("claude", "claude", None, "usd", 20.0),
+    Step("claude", "claude", None, "usd", None),
     Step("grok", "cursor", "cursor-grok-4.6-high-fast", "calls", 60),
     Step("flash", "cursor", "gemini-3.7-flash-high", "calls", 60),
     Step("local", "ollama", None, "none", 0),
 )
 
 _BY_NAME = {step.name: step for step in LADDER}
+
+
+def ceiling_of(step: Step) -> float:
+    """What `step` may spend in a week, at the moment of the question.
+
+    The step that spends dollars carries no number of its own: it is the
+    weekly ceiling the user sets, and `quota.ceiling_usd` is the one place
+    that reads it. The steps that count calls carry their own fixed number.
+    """
+    return quota.ceiling_usd() if step.ceiling is None else step.ceiling
 
 
 def reserve_for(now: dt.datetime, ceiling: float) -> float:
@@ -73,15 +85,16 @@ def has_room(conn: sqlite3.Connection, step: Step,
         return True, "the local engine has no ceiling"
 
     spent = spent_by(conn, step.engine, now)
-    limit = step.ceiling
+    ceiling = ceiling_of(step)
+    limit = ceiling
     note = ""
     if step.unit == "usd":
-        reserve = reserve_for(now, step.ceiling)
-        limit = step.ceiling - reserve
+        reserve = reserve_for(now, ceiling)
+        limit = ceiling - reserve
         note = f", today's reserve holds back {reserve:.2f}"
 
     ok = spent < limit
-    reason = (f"{step.name} spent {spent:.2f} of {step.ceiling:.2f} "
+    reason = (f"{step.name} spent {spent:.2f} of {ceiling:.2f} "
              f"{step.unit}{note}")
     return ok, reason
 

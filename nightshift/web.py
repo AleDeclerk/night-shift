@@ -84,11 +84,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         ).fetchone()
         now = dt.datetime.now()
         spent = quota.spent_this_week(conn, now)
+        claude_ceiling = cascade.ceiling_of(cascade.LADDER[0])
         ladder = [{
             "step": step, "spent": cascade.spent_by(conn, step.engine, now),
             "ok": cascade.has_room(conn, step, now)[0],
+            "ceiling": cascade.ceiling_of(step),
         } for step in cascade.LADDER]
-        claude_reserve = cascade.reserve_for(now, cascade.LADDER[0].ceiling)
+        claude_reserve = cascade.reserve_for(now, claude_ceiling)
 
         jobs_queued = job_rows("queued", "running")
         all_projects_rows = projects.all_projects(conn)
@@ -133,7 +135,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
-            "ladder": ladder, "claude_ceiling": cascade.LADDER[0].ceiling,
+            "ladder": ladder, "claude_ceiling": claude_ceiling,
             "claude_reserve": claude_reserve,
             "projects": all_projects_rows,
             "schedules": jobs.SCHEDULES,

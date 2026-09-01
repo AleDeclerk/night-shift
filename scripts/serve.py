@@ -5,10 +5,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from nightshift import backends, db, projects, web  # noqa: E402
+from nightshift import backends, db, projects, quota, web  # noqa: E402
 
 HOME = pathlib.Path.home() / ".night-shift"
-CEILING_USD = 20.0
 
 if __name__ == "__main__":
     HOME.mkdir(exist_ok=True)
@@ -19,7 +18,10 @@ if __name__ == "__main__":
     # Reading directories is free, so the page never waits for a cycle to
     # show a project that already exists on disk.
     projects.sync(conn)
-    app = web.make_app(conn, CEILING_USD)
+    # The same ceiling the cycle and the tick read. The page used to hold
+    # its own copy of 20.0 and ignore NIGHTSHIFT_CEILING_USD, while the
+    # budget card told the user to raise it.
+    app = web.make_app(conn, quota.ceiling_usd())
 
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8899)

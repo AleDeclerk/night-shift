@@ -1,7 +1,31 @@
 """The governor. It counts the spend of this system and it stops the system."""
 import dataclasses
 import datetime as dt
+import os
 import sqlite3
+
+# Measured on 2026-08-30 with three real cycles: a cycle that finds nothing
+# costs 0.87 USD of equivalent spend, and each draft adds about 0.80. One cycle
+# each day with three drafts is about 3.3 USD, so a week lands near 23. The
+# ceiling sits a little under that on purpose: it must bite before the week
+# ends if the mail volume grows.
+DEFAULT_CEILING_USD = 20.0
+
+
+def ceiling_usd() -> float:
+    """The weekly ceiling, read where the user sets it.
+
+    Three copies of 20.0 lived in the scripts and in the cascade, and only
+    two of them read the variable. The budget card told the user to raise
+    NIGHTSHIFT_CEILING_USD, and the page went on judging against its own
+    number. This is the one place that reads it, at call time, so a new
+    value needs no restart.
+    """
+    named = os.environ.get("NIGHTSHIFT_CEILING_USD")
+    try:
+        return float(named) if named else DEFAULT_CEILING_USD
+    except ValueError:      # a bad value must not stop the cycle at 06:30
+        return DEFAULT_CEILING_USD
 
 
 @dataclasses.dataclass(frozen=True)

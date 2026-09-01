@@ -811,7 +811,7 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
         {% for row in ladder %}
           <li>
             <span class="lname">{{ row.step.name|upper }}</span>
-            <span class="lspent">{{ "%.2f"|format(row.spent) }} / {{ "%g"|format(row.step.ceiling) }} {{ row.step.unit }}</span>
+            <span class="lspent">{{ "%.2f"|format(row.spent) }} / {{ "%g"|format(row.ceiling) }} {{ row.step.unit }}</span>
             {% if row.ok %}
             <span class="lroom">hay lugar</span>
             {% else %}
