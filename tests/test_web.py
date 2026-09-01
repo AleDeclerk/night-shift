@@ -905,3 +905,119 @@ def test_a_failed_probe_still_records_what_it_spent(tmp_path, monkeypatch):
     row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
     assert row["kind"] == "probe"
     assert row["ok"] == 0
+
+
+# --- the redo pays the same price as the cycle ----------------------------
+
+def test_a_redo_over_the_ceiling_does_nothing_and_says_why(tmp_path,
+                                                           monkeypatch):
+    """The route composed and saved with no `quota.may_run` and no
+    `cascade.has_room`. So the one button that a person can press many times
+    in a row was the only call that walked past the governor."""
+    from nightshift import web as web_module
+
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES (?,'mail',1,9.0)", (dt.datetime.now().isoformat(),))
+    conn.commit()
+
+    def never(*a, **kw):
+        raise AssertionError("no engine may run once the ceiling is reached")
+
+    monkeypatch.setattr(web_module.mail, "write_draft", never)
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    assert r.status_code == 303
+
+    refused = conn.execute(
+        "SELECT * FROM events WHERE kind='redo_refused'").fetchone()
+    assert refused is not None
+    assert refused["item_id"] == item_id
+    assert refused["detail"]
+    body = conn.execute("SELECT body FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0]
+    assert "Draft" not in body      # nothing was written
+
+
+def test_a_redo_that_failed_keeps_its_cost_and_says_so(tmp_path, monkeypatch):
+    """`if ok:` wrapped the record, so a failed redo dropped the cost and
+    left the body untouched. The item went back to `Pendiente` unchanged and
+    silent, and the ceiling never saw the spend."""
+    from nightshift import cascade, quota
+    from nightshift import web as web_module
+    from nightshift.mail import DraftResult
+
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+
+    def empty_draft(runner_module, item, cwd):
+        return DraftResult(0.8, False, "The agent reported an empty draft.")
+
+    monkeypatch.setattr(web_module.mail, "write_draft", empty_draft)
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=20.0))
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+
+    now = dt.datetime.now()
+    assert cascade.spent_by(conn, "claude", now) == 0.8
+    assert quota.spent_this_week(conn, now) == 0.8
+    body = conn.execute("SELECT body FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0]
+    assert "NO DRAFT" in body
+    assert "empty draft" in body.lower()
+
+
+def test_a_redo_writes_the_trace_the_way_the_cycle_does(tmp_path, monkeypatch):
+    from nightshift import web as web_module
+    from nightshift.mail import DraftResult
+
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+
+    def good_draft(runner_module, item, cwd):
+        return DraftResult(0.4, True, "I asked for the three layouts.")
+
+    monkeypatch.setattr(web_module.mail, "write_draft", good_draft)
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=20.0))
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    body = conn.execute("SELECT body FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0]
+    assert body.startswith("She asks for 3 layouts.")
+    assert "Draft: I asked for the three layouts." in body
+
+    # A second redo replaces the trace of the first one instead of piling
+    # one under the other.
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    body = conn.execute("SELECT body FROM items WHERE id=?",
+                        (item_id,)).fetchone()[0]
+    assert body.count("Draft: ") == 1
+
+
+def test_a_redo_that_spent_stops_the_next_one(tmp_path, monkeypatch):
+    """`quota.spent_this_week` reads the `runs` table alone. Without a run
+    of its own a redo could be pressed all day and the ceiling would never
+    bite."""
+    from nightshift import web as web_module
+    from nightshift.mail import DraftResult
+
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _open_item(conn)
+    monkeypatch.setattr(
+        web_module.mail, "write_draft",
+        lambda runner_module, item, cwd: DraftResult(3.0, True, "Redone."))
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+
+    def never(*a, **kw):
+        raise AssertionError("the third redo must never reach an engine")
+
+    monkeypatch.setattr(web_module.mail, "write_draft", never)
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+    assert conn.execute(
+        "SELECT count(*) FROM events WHERE kind='redo_refused'"
+    ).fetchone()[0] == 1

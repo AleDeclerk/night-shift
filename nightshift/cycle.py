@@ -2,7 +2,8 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import cascade, engines, jobs, life, mail, quota, projects, runs
+from nightshift import (cascade, drafts, engines, jobs, life, projects,
+                        quota, runs)
 
 
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
@@ -68,8 +69,18 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
         step, _fallen_from = cascade.choose(conn, now)
         compose_engine, compose_model = step.engine, step.model
 
-    # Each item commits on its own. One exception in the middle used to throw
-    # away every draft already written and every dollar already spent.
+    def keep(item, body) -> int:
+        """Write one item and give back its id. Each item commits on its
+        own: one exception in the middle used to throw away every draft
+        already written and every dollar already spent."""
+        cur = conn.execute(
+            "INSERT INTO items (run_id, created_at, bucket, title, body,"
+            " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",
+            (run_id, now.isoformat(), item.bucket, item.title, body,
+             item.source_url, item.excerpt))
+        conn.commit()
+        return cur.lastrowid
+
     stopped_by_budget = 0
     for item in result.items:
         # The triage reads a 24 hour window and the scheduler runs twice a
@@ -79,41 +90,24 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                         (item.source_url,)).fetchone():
             continue
 
-        body = item.body
-        reply = None
         try:
-            if item.bucket == "needs_you":
-                # The ceiling is checked here too, not only before the cycle.
-                # A large inbox on the first run would otherwise spend a whole
-                # week of quota before anything stopped it.
-                if decision.spent_usd + spent >= ceiling_usd:
-                    stopped_by_budget += 1
-                else:
-                    reply = mail.reply(
-                        mail_module, runner_module, item, engine=compose_engine,
-                        model=compose_model, cwd=workspace)
-                    spent += reply.cost_usd
-                    # The trace of the draft rides with the item. Without it
-                    # an empty draft looks the same as a written one.
-                    mark = "Draft: " if reply.ok else "NO DRAFT. "
-                    body = f"{item.body}\n\n{mark}{reply.note}"
-            cur = conn.execute(
-                "INSERT INTO items (run_id, created_at, bucket, title, body,"
-                " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",
-                (run_id, now.isoformat(), item.bucket, item.title, body,
-                 item.source_url, item.excerpt))
-            conn.commit()
-            item_id = cur.lastrowid
+            # The ceiling is read here too, not only before the cycle. A
+            # large inbox on the first run would otherwise spend a whole week
+            # of quota before anything stopped it.
+            no_room = decision.spent_usd + spent >= ceiling_usd
+            if item.bucket == "needs_you" and no_room:
+                stopped_by_budget += 1
+                item_id = keep(item, item.body)
+            elif item.bucket == "needs_you":
+                answer, item_id = drafts.for_item(
+                    conn, mail_module, runner_module, item,
+                    engine=compose_engine, model=compose_model, cwd=workspace,
+                    save=lambda body: keep(item, body), now=now)
+                spent += answer.cost_usd
+            else:
+                item_id = keep(item, item.body)
             life.record(conn, "item_found", item_id=item_id,
                         detail=item.bucket, now=now)
-            if reply is not None:
-                # One event for each call, so the save that Claude made is
-                # charged to Claude and not to the engine that composed. A
-                # draft that failed still spent, so it leaves a record too.
-                kind = "draft_written" if reply.ok else "draft_failed"
-                for charged, cost in reply.charges:
-                    life.record(conn, kind, item_id=item_id, engine=charged,
-                                cost_usd=cost, now=now)
         except Exception as exc:  # noqa: BLE001
             runs.end(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400], now=now)

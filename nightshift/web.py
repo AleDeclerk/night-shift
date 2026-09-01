@@ -8,9 +8,9 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import (backends, board, cascade, engines, jobs, knowledge,
-                        life, mail, projects, quota, runner, runs, signin,
-                        tick)
+from nightshift import (backends, board, cascade, drafts, engines, jobs,
+                        knowledge, life, mail, projects, quota, runner,
+                        runs, signin, tick)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -243,26 +243,49 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
     def redo_item(item_id: int):
         row = conn.execute("SELECT * FROM items WHERE id=?",
                            (item_id,)).fetchone()
-        if row is not None:
-            item = mail.Item(bucket=row["bucket"], title=row["title"],
-                             body=row["body"] or "",
-                             source_url=row["source_url"] or "",
-                             excerpt=row["excerpt"] or "")
-            mail_engine = engines.get_mail_engine(conn)
-            compose_engine, compose_model = mail_engine, None
-            if mail_engine == "auto":
-                step, _fallen_from = cascade.choose(conn, dt.datetime.now())
-                compose_engine, compose_model = step.engine, step.model
-            # The same call the cycle makes: Claude composes and saves in one
-            # go, any other engine composes and Claude saves it.
-            answer = mail.reply(mail, runner, item, engine=compose_engine,
-                                model=compose_model, cwd=backends.WORKSPACE)
-            if answer.ok:
-                for charged, cost in answer.charges:
-                    life.record(conn, "draft_written", item_id=item_id,
-                                engine=charged, cost_usd=cost,
-                                detail=answer.note)
-            life.apply_verb(conn, item_id, "rehacer")
+        if row is None:
+            return RedirectResponse("/", status_code=303)
+
+        now = dt.datetime.now()
+        # The same two checks the cycle makes before a draft. A redo is one
+        # more call on the same quota, and it is the only call that a person
+        # can ask for again and again in a row.
+        decision = quota.may_run(conn, now, ceiling_usd)
+        room_ok, room_reason = cascade.has_room(conn, cascade.LADDER[0], now)
+        if not decision.allowed or not room_ok:
+            life.record(conn, "redo_refused", item_id=item_id, now=now,
+                        detail=(decision.reason if not decision.allowed
+                                else room_reason)[:200])
+            return RedirectResponse("/", status_code=303)
+
+        item = mail.Item(bucket=row["bucket"], title=row["title"],
+                         body=drafts.reason_of(row["body"] or ""),
+                         source_url=row["source_url"] or "",
+                         excerpt=row["excerpt"] or "")
+        mail_engine = engines.get_mail_engine(conn)
+        compose_engine, compose_model = mail_engine, None
+        if mail_engine == "auto":
+            step, _fallen_from = cascade.choose(conn, now)
+            compose_engine, compose_model = step.engine, step.model
+
+        def keep(body) -> int:
+            conn.execute("UPDATE items SET body=? WHERE id=?", (body, item_id))
+            conn.commit()
+            return item_id
+
+        # The cycle wraps its own drafts in a run, and this one needs its
+        # own: `quota.spent_this_week` reads the `runs` table alone, so a
+        # redo that opened no run would be invisible to the weekly ceiling.
+        run_id = runs.start(conn, now, "redo")
+        # The same function the cycle calls: Claude composes and saves in one
+        # go, any other engine composes and Claude saves it. The cost is
+        # recorded whether or not the draft worked.
+        answer, _item_id = drafts.for_item(
+            conn, mail, runner, item, engine=compose_engine,
+            model=compose_model, cwd=backends.WORKSPACE, save=keep, now=now)
+        runs.end(conn, run_id, answer.ok, cost=answer.cost_usd,
+                 error=None if answer.ok else answer.note[:400], now=now)
+        life.apply_verb(conn, item_id, "rehacer")
         return RedirectResponse("/", status_code=303)
 
     # Registered before the generic /items/{item_id}/{verb} below, the same
