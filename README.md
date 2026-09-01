@@ -49,7 +49,7 @@ prompt changed nothing. Cutting the MCP servers cut the price in half.
 Four faults appeared only when the code ran against the live mailbox. Each one
 now has a test.
 
-- **A draft came out empty and the cycle called it a success.** The system
+- **A draft was empty and the cycle called it a success.** The system
   trusted the agent. Now the draft call reports the text that it saved, and an
   empty draft shows as `NO DRAFT`.
 - **The same message got a draft on every cycle.** The window returns the same
@@ -63,11 +63,14 @@ now has a test.
 
 The page shows three engines and what each one can do: Claude, Cursor and
 Ollama. Only Claude holds a Gmail connector, so the mail work stays on it, and
-the page says why. Google closed the Gemini CLI to personal accounts, so that
-CLI left the panel and the ladder. Gemini Flash is still available: Cursor
-speaks to it, as the `flash` step of the ladder. The panel measures with cheap
-local commands, and it answers `UNKNOWN` when it cannot know. Cursor gets a sign-in flow that opens no
-browser on its own, and the sign-in link never enters the database or a log.
+the page says why. The panel measures with cheap local
+commands, and it answers `UNKNOWN` when it cannot know. Cursor gets a sign-in
+flow that opens no browser on its own, and the sign-in link never enters the
+database or a log.
+
+Google closed the Gemini CLI to personal accounts, so that CLI left the panel
+and the ladder. Gemini Flash is still available: Cursor speaks to it, as the
+`flash` step of the ladder.
 
 ## The local engine and the mail
 
