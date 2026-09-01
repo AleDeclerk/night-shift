@@ -16,9 +16,15 @@ import math
 import re
 import subprocess
 
+# The CLI drops the minutes when the reset falls on the round hour: it
+# writes `6am`, not `6:00am`. Both shapes are one moment, so both are read.
 LINE = re.compile(
     r"Current (?P<what>session|week \(all models\)): (?P<pct>\d+)% used"
-    r" · resets (?P<when>[A-Z][a-z]{2} \d{1,2} at \d{1,2}:\d{2}[ap]m)")
+    r" · resets (?P<when>[A-Z][a-z]{2} \d{1,2} at \d{1,2}(?::\d{2})?[ap]m)")
+
+# `6am` into `6:00am`, and `5:59am` left alone: the lookbehind refuses a
+# digit pair that already follows a colon.
+ROUND_HOUR = re.compile(r"(?<!:)\b(\d{1,2})([ap]m)")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,10 +53,11 @@ class Usage:
 
 
 def _when(text: str, now: dt.datetime) -> dt.datetime:
-    """`Sep 8 at 5:59am` into a datetime. The year is the one that puts the
-    moment in the future: a reset never lies in the past."""
+    """`Sep 8 at 5:59am` or `Sep 8 at 6am` into a datetime. The year is the
+    one that puts the moment in the future: a reset never lies in the past."""
     # The year goes into the string: parsing a day with no year is ambiguous
     # around leap days, and Python warns about it.
+    text = ROUND_HOUR.sub(r"\1:00\2", text)
     moment = dt.datetime.strptime(f"{now.year} {text}", "%Y %b %d at %I:%M%p")
     if moment < now - dt.timedelta(days=1):
         moment = moment.replace(year=now.year + 1)

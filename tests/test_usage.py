@@ -60,3 +60,26 @@ def test_reading_the_cli_answer_shape():
     envelope = '{"result": %s, "total_cost_usd": 0}' % __import__("json").dumps(SAMPLE)
     u = usage.from_cli_output(envelope, now=NOW)
     assert u is not None and u.week_pct == 4
+
+
+# Verbatim output of the same command three hours later, on 2026-09-01. The
+# reset moved to the round hour, and the CLI then writes `6am`, with no
+# minutes. The first parser asked for minutes and read nothing.
+ON_THE_HOUR = """You are currently using your subscription to power your Claude Code usage
+
+Current session: 61% used · resets Sep 1 at 8:40pm (America/Buenos_Aires)
+Current week (all models): 6% used · resets Sep 8 at 6am (America/Buenos_Aires)
+Current week (Fable): 6% used · resets Sep 8 at 6am (America/Buenos_Aires)
+"""
+
+
+def test_a_reset_on_the_round_hour_is_read():
+    """`6am` and `5:59am` are both moments. A parser that reads only one of
+    them leaves the governor blind for a whole week, and it says nothing."""
+    u = usage.parse(ON_THE_HOUR, now=NOW)
+
+    assert u is not None
+    assert u.week_pct == 6
+    assert u.week_resets == dt.datetime(2026, 9, 8, 6, 0)
+    assert u.session_pct == 61
+    assert u.session_resets == dt.datetime(2026, 9, 1, 20, 40)
