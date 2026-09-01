@@ -30,6 +30,12 @@ LABELS = {
 # is open gets skipped instead of piling a second, identical job on top.
 _CLOSED_JOB_STATES = ("done", "failed")
 
+# launchd can be killed and the Mac can sleep mid-job. Nothing else moves a
+# job out of 'running', so it freezes there and every later turn of its
+# template gets skipped for ever.
+STALE_MINUTES = 30
+DEAD_PROCESS_NOTE = "El proceso murió sin cerrar el encargo"
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -229,7 +235,12 @@ def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
     fills with rubbish nobody reads. Firing or skipping, the template's
     `next_run` always moves forward, and an event is always written (rule 2
     of the design): a silent skip is a task that seems to run and does not.
+
+    A dead job would otherwise read as still open for ever, so a stale one
+    is reaped first: only then can this function tell a template that is
+    really waiting on work from one whose last job just never came back.
     """
+    reap_stale(conn, now)
     made, skipped = 0, 0
     for template in due_templates(conn, now):
         template_id = template["id"]
@@ -256,8 +267,28 @@ def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
     return {"made": made, "skipped": skipped}
 
 
+def reap_stale(conn: sqlite3.Connection, now: dt.datetime,
+               minutes: int = STALE_MINUTES) -> int:
+    """Fail every job stuck in 'running' for longer than `minutes`.
+
+    Nothing else ever moves a job out of 'running' on its own: a killed
+    process or a sleeping Mac leaves the row exactly where it was, and
+    `fire_templates` reads that row as still open and skips every later turn
+    of the template. Failing it here closes the row the same way a real
+    failure would, which is what lets the next turn fire again.
+    """
+    cutoff = (now - dt.timedelta(minutes=minutes)).isoformat()
+    stale = conn.execute(
+        "SELECT id FROM jobs WHERE state='running' AND started_at <= ?",
+        (cutoff,)).fetchall()
+    for row in stale:
+        fail(conn, row["id"], DEAD_PROCESS_NOTE, now=now)
+    return len(stale)
+
+
 def run_next(conn, runner_module, workspace,
-             engine: str = engines.DEFAULT_ENGINE) -> float:
+             engine: str = engines.DEFAULT_ENGINE,
+             now: dt.datetime | None = None) -> float:
     """Run the oldest queued job. It returns what the run spent.
 
     A failed job goes to 'failed', never back to 'queued': the scheduler would
@@ -268,7 +299,13 @@ def run_next(conn, runner_module, workspace,
     `claude` keeps the original path, with the schema forced by the runner.
     Every other engine goes through `nightshift.engines`, which asks for the
     same shape in words and reads whatever comes back with a tolerant parse.
+
+    A job from an earlier call can still be stuck in 'running' because its
+    process died without closing it, so every call reaps stale ones first.
     """
+    now = now or dt.datetime.now()
+    reap_stale(conn, now)
+
     job = next_queued(conn)
     if job is None:
         return 0.0
@@ -277,7 +314,8 @@ def run_next(conn, runner_module, workspace,
     workdir = pathlib.Path(workspace) / f"job-{job_id}"
     workdir.mkdir(parents=True, exist_ok=True)
 
-    conn.execute("UPDATE jobs SET state='running' WHERE id=?", (job_id,))
+    conn.execute("UPDATE jobs SET state='running', started_at=? WHERE id=?",
+                 (now.isoformat(), job_id))
     conn.commit()
 
     prompt = PROMPT.format(job=job["prompt"], workdir=workdir)
@@ -301,10 +339,10 @@ def run_next(conn, runner_module, workspace,
     # gave back a cost and wrote no such event, so a job that ran on Cursor
     # moved no step of the ladder. A job that failed spent all the same.
     life.record(conn, "job_ran", job_id=job_id, engine=engine, cost_usd=cost,
-                detail=(error or "")[:200] or None)
+                detail=(error or "")[:200] or None, now=now)
 
     if data is None:
-        fail(conn, job_id, error)
+        fail(conn, job_id, error, now=now)
         return cost
 
     if not data.get("finished"):
@@ -312,7 +350,7 @@ def run_next(conn, runner_module, workspace,
             "The agent stopped and it gave no question."
         stop_and_ask(conn, job_id, question)
     else:
-        finish(conn, job_id, str(workdir))
+        finish(conn, job_id, str(workdir), now=now)
         conn.execute("UPDATE jobs SET answer=? WHERE id=?",
                      (data.get("summary"), job_id))
         conn.commit()

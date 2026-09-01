@@ -229,3 +229,28 @@ def test_fire_templates_fires_again_once_the_last_job_is_done(tmp_path):
         "SELECT count(*) FROM jobs WHERE template_id=?",
         (template_id,)).fetchone()[0]
     assert count == 2
+
+
+def test_fire_templates_reaps_a_dead_job_and_fires_the_turn(tmp_path):
+    """launchd can kill the process, or the Mac can sleep, mid-job. Nothing
+    then moves the job out of 'running', and every later turn of the
+    template used to be skipped for ever."""
+    conn = db.connect(tmp_path / "s.db")
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    jobs.add(conn, "sprint review", schedule="weekly", now=now)
+    template_id = conn.execute(
+        "SELECT id FROM jobs WHERE state='template'").fetchone()[0]
+    stuck_id = jobs.next_queued(conn)["id"]
+    conn.execute("UPDATE jobs SET state='running', started_at=? WHERE id=?",
+                (now.isoformat(), stuck_id))
+    conn.commit()
+
+    later = now + dt.timedelta(days=8)  # far past both the turn and 30 min
+    result = jobs.fire_templates(conn, later)
+
+    assert result == {"made": 1, "skipped": 0}
+    assert jobs.get(conn, stuck_id)["state"] == "failed"
+    count = conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=?",
+        (template_id,)).fetchone()[0]
+    assert count == 2

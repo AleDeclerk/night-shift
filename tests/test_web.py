@@ -135,6 +135,22 @@ def test_a_queued_job_is_visible_on_the_page(tmp_path):
     assert "Prepare the sprint review" in body
 
 
+def test_a_running_job_shows_when_it_started_apart_from_the_queue(tmp_path):
+    """A dead job used to read as `running` right next to the ones still
+    waiting, with no way to tell it apart from a job the ladder is really
+    working on."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state, started_at)"
+                 " VALUES ('x','Long job','running','2026-09-01T06:30:00')")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state)"
+                 " VALUES ('x','Waiting job','queued')")
+    conn.commit()
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    assert "Corriendo desde 06:30" in body
+    assert "Long job" in body
+    assert "1 en cola" in body    # the running job does not count as queued
+
+
 def test_a_cycle_that_never_finished_is_visible(tmp_path):
     """A crash between the start and the end leaves `ok` NULL, with no error
     text. The page must not look like a quiet day."""

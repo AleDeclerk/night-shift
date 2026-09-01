@@ -677,6 +677,11 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
   </form>
 
   <div class="queuelist">
+  {% for j in jobs_running %}
+  <div class="queued">
+    Corriendo desde {{ j["started_at"]|hhmm }}: {{ j["prompt"] }}
+  </div>
+  {% endfor %}
   {% for j in jobs_queued %}
   <div class="queued">
     En cola: {{ j["prompt"] }}

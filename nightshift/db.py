@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   project_id  INTEGER,
   schedule    TEXT NOT NULL DEFAULT 'once',
   template_id INTEGER,
-  next_run    TEXT
+  next_run    TEXT,
+  started_at  TEXT
 );
 CREATE TABLE IF NOT EXISTS projects (
   id         INTEGER PRIMARY KEY,
@@ -122,6 +123,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jobs ADD COLUMN template_id INTEGER")
     if "next_run" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN next_run TEXT")
+
+    # `started_at`, 2026-09-01: the moment a job entered 'running', so a
+    # process that dies without closing it can be told apart from one still
+    # at work. A live jobs table predates the column.
+    if "started_at" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
 
     # Several folders, one project, 2026-09-01: `project_paths` is a
     # brand-new table, so `CREATE TABLE IF NOT EXISTS` already makes it on

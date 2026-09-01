@@ -203,3 +203,68 @@ def test_fail_stamps_its_event_with_the_injected_clock(tmp_path):
         "SELECT at FROM events WHERE job_id=? AND kind='job_failed'",
         (job_id,)).fetchone()
     assert row["at"].startswith("2026-08-26T03:00")
+
+
+# --- reap_stale: a job that dies in 'running' must not freeze for ever ----
+
+def test_reap_stale_fails_a_job_running_past_the_limit(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    now = dt.datetime(2026, 9, 1, 12, 0)
+    started = now - dt.timedelta(minutes=31)
+    conn.execute("UPDATE jobs SET state='running', started_at=? WHERE id=?",
+                (started.isoformat(), job_id))
+    conn.commit()
+
+    reaped = jobs.reap_stale(conn, now, minutes=30)
+
+    assert reaped == 1
+    row = jobs.get(conn, job_id)
+    assert row["state"] == "failed"
+    assert row["question"] == "El proceso murió sin cerrar el encargo"
+    kinds = [r[0] for r in conn.execute(
+        "SELECT kind FROM events WHERE job_id=?", (job_id,))]
+    assert "job_failed" in kinds
+
+
+def test_reap_stale_leaves_a_job_running_under_the_limit(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    now = dt.datetime(2026, 9, 1, 12, 0)
+    started = now - dt.timedelta(minutes=5)
+    conn.execute("UPDATE jobs SET state='running', started_at=? WHERE id=?",
+                (started.isoformat(), job_id))
+    conn.commit()
+
+    reaped = jobs.reap_stale(conn, now, minutes=30)
+
+    assert reaped == 0
+    assert jobs.get(conn, job_id)["state"] == "running"
+
+
+def test_run_next_stamps_started_at_when_a_job_starts(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    when = dt.datetime(2026, 9, 1, 12, 0)
+    fake = FakeRunner({"finished": False, "question": "which one?",
+                       "summary": "I stopped."})
+    jobs.run_next(conn, fake, tmp_path, now=when)
+    row = jobs.get(conn, job_id)
+    assert row["started_at"] == when.isoformat()
+
+
+def test_run_next_reaps_a_stale_job_before_picking_the_next_one(tmp_path):
+    """A job stuck in 'running' must not sit forever: the next call to
+    run_next is also a chance to notice it died."""
+    conn = db.connect(tmp_path / "s.db")
+    stuck_id = jobs.add(conn, "stuck")
+    started = dt.datetime.now() - dt.timedelta(minutes=45)
+    conn.execute("UPDATE jobs SET state='running', started_at=? WHERE id=?",
+                (started.isoformat(), stuck_id))
+    conn.commit()
+    jobs.add(conn, "new one")
+
+    fake = FakeRunner({"finished": True, "summary": "done"})
+    jobs.run_next(conn, fake, tmp_path)
+
+    assert jobs.get(conn, stuck_id)["state"] == "failed"

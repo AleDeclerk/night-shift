@@ -67,6 +67,18 @@ def _when(iso: str) -> str:
 TEMPLATES.env.filters["when"] = _when
 
 
+def _hhmm(iso: str) -> str:
+    """A running job shows only the clock, not the date: it either started
+    today or it is stale enough to be reaped."""
+    try:
+        return dt.datetime.fromisoformat(iso).strftime("%H:%M")
+    except ValueError:
+        return iso
+
+
+TEMPLATES.env.filters["hhmm"] = _hhmm
+
+
 def make_app(conn, ceiling_usd: float, engine_source=None,
              port: int = PORT) -> FastAPI:
     """`engine_source` lets a test inject engines. Without it the page runs the
@@ -140,7 +152,11 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
         } for step in cascade.LADDER]
         claude_reserve = cascade.reserve_for(now, claude_ceiling)
 
-        jobs_queued = job_rows("queued", "running")
+        # A running job apart from the queued ones: otherwise a dead job,
+        # stuck in 'running' until the next reap, reads as one still
+        # waiting its turn.
+        jobs_queued = job_rows("queued")
+        jobs_running = job_rows("running")
         all_projects_rows = projects.all_projects(conn)
         projects_by_id = {p["id"]: p for p in all_projects_rows}
         # A handful of projects at most: one query per row costs nothing here.
@@ -174,6 +190,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             "spent": round(spent, 2), "ceiling": ceiling_usd,
             "jobs_waiting": job_rows("needs_you", "failed"),
             "jobs_queued": jobs_queued,
+            "jobs_running": jobs_running,
             "jobs_done": job_rows("done"),
             "engines": engines_of(),
             "probes": backends.last_probes(conn),
