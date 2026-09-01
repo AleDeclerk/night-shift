@@ -48,8 +48,58 @@ def test_add_stores_the_project(tmp_path):
 
 
 def test_next_after_daily(tmp_path):
+    """`daily` anchors to 09:00, the same clock time every person reads,
+    instead of the hour the job happened to be queued at."""
     now = dt.datetime(2026, 9, 1, 6, 30)
-    assert jobs.next_after("daily", now) == dt.datetime(2026, 9, 2, 6, 30)
+    assert jobs.next_after("daily", now) == dt.datetime(2026, 9, 1, 9, 0)
+
+
+def test_next_after_daily_after_nine_rolls_to_tomorrow(tmp_path):
+    now = dt.datetime(2026, 9, 1, 9, 30)
+    assert jobs.next_after("daily", now) == dt.datetime(2026, 9, 2, 9, 0)
+
+
+def test_next_after_hourly(tmp_path):
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    assert jobs.next_after("hourly", now) == dt.datetime(2026, 9, 1, 7, 30)
+
+
+def test_next_after_every_3h(tmp_path):
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    assert jobs.next_after("every_3h", now) == dt.datetime(2026, 9, 1, 9, 30)
+
+
+def test_next_after_twice_daily_before_nine_gives_nine(tmp_path):
+    now = dt.datetime(2026, 9, 1, 8, 0)
+    assert jobs.next_after("twice_daily", now) == dt.datetime(2026, 9, 1, 9, 0)
+
+
+def test_next_after_twice_daily_between_nine_and_six_gives_six(tmp_path):
+    now = dt.datetime(2026, 9, 1, 10, 0)
+    assert jobs.next_after("twice_daily", now) == dt.datetime(2026, 9, 1, 18, 0)
+
+
+def test_next_after_twice_daily_after_six_rolls_to_tomorrow_nine(tmp_path):
+    now = dt.datetime(2026, 9, 1, 19, 0)
+    assert jobs.next_after("twice_daily", now) == dt.datetime(2026, 9, 2, 9, 0)
+
+
+def test_next_after_weekdays_from_a_friday_gives_the_monday(tmp_path):
+    """2026-09-04 is a Friday. Past its own 09:00, the next 09:00 falls on
+    Saturday, and Saturday is not a weekday: it rolls to Monday."""
+    now = dt.datetime(2026, 9, 4, 14, 0)
+    assert jobs.next_after("weekdays", now) == dt.datetime(2026, 9, 7, 9, 0)
+
+
+def test_next_after_weekdays_stays_within_the_week_when_it_can(tmp_path):
+    """2026-09-1 is a Tuesday: the next weekday 09:00 is the same day."""
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    assert jobs.next_after("weekdays", now) == dt.datetime(2026, 9, 1, 9, 0)
+
+
+def test_next_after_biweekly(tmp_path):
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    assert jobs.next_after("biweekly", now) == dt.datetime(2026, 9, 15, 6, 30)
 
 
 def test_next_after_weekly(tmp_path):

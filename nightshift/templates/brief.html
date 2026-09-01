@@ -289,6 +289,8 @@ body{padding:0;overflow:hidden}
 .a-order{display:flex;gap:.7rem;align-items:flex-end;flex-wrap:wrap;
   border:3px solid var(--rule);background:var(--paper-bright);padding:.7rem .9rem}
 .a-order form.order{flex:3 1 22rem;margin:0}
+.a-order .queuerun{flex:1 1 14rem;margin:0}
+.a-order .queuerun .lever{width:auto;margin-top:0;padding:.45rem 1rem}
 .a-order .assign{flex:2 1 18rem;margin:0;border:0;padding:0;background:none}
 .a-order .assign form{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
 .a-order .assign label{font-family:"Oswald",sans-serif;font-size:.58rem;
@@ -652,10 +654,16 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
     <input name="prompt" placeholder="Agendar tareas" required>
     <select name="schedule">
       {% for s in schedules %}
-      <option value="{{ s }}">{% if s == 'once' %}Una vez{% elif s == 'daily' %}Diario{% elif s == 'weekly' %}Semanal{% else %}Mensual{% endif %}</option>
+      <option value="{{ s }}">{{ schedule_labels[s] }}</option>
       {% endfor %}
     </select>
     <button type="submit">A la cola</button>
+  </form>
+
+  <form class="queuerun" method="post" action="/queue/run">
+    <button type="submit" class="lever" data-queue-run
+           {% if not jobs_queued %}disabled{% endif %}>CORRER LA COLA · GASTA CUOTA</button>
+    <div class="note">{% if jobs_queued %}{{ jobs_queued|length }} en cola{% else %}nada en cola{% endif %}</div>
   </form>
 
   <form class="newproject" id="new-project" method="post" action="/projects" hidden>

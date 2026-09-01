@@ -690,3 +690,58 @@ def test_merging_a_project_into_itself_changes_nothing(tmp_path):
                        (pid,)).fetchone()
     assert row["active"] == 1
     assert row["merged_into"] is None
+
+
+# --- running the queue on request -----------------------------------------
+
+def test_posting_queue_run_redirects_and_runs_the_queue(tmp_path, monkeypatch):
+    """No real engine may ever run in a test, so the module-level call the
+    route makes gets replaced, the same way rehacer's does."""
+    from nightshift import web as web_module
+    conn = db.connect(tmp_path / "s.db")
+    calls = []
+
+    def fake_run(conn_arg, **kw):
+        calls.append(kw)
+        return {"fired": 0, "skipped": 0, "jobs_run": 1, "cost_usd": 0.4,
+               "reason": ""}
+
+    monkeypatch.setattr(web_module.tick, "run", fake_run)
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+    r = client.post("/queue/run", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+    assert len(calls) == 1
+
+
+def test_the_page_says_how_many_jobs_wait(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO jobs (created_at, prompt, state)"
+                 " VALUES ('x','one','queued'),('x','two','queued'),"
+                 "('x','three','queued')")
+    conn.commit()
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "3 en cola" in body
+
+
+def test_with_an_empty_queue_the_run_button_is_disabled(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "nada en cola" in body
+    tag = body[body.index('data-queue-run'):]
+    tag = tag[:tag.index(">") + 1]
+    assert "disabled" in tag
+
+
+# --- the wider set of schedules --------------------------------------------
+
+def test_the_schedule_select_shows_the_new_labels(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    for label in ("Dos veces por día", "Días de semana", "Cada hora",
+                 "Cada 3 horas", "Cada dos semanas"):
+        assert label in body, label

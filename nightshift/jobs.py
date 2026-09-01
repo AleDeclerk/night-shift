@@ -9,7 +9,22 @@ from nightshift import life
 
 from nightshift import engines
 
-SCHEDULES = ("once", "daily", "weekly", "monthly")
+SCHEDULES = ("once", "hourly", "every_3h", "twice_daily", "daily",
+             "weekdays", "weekly", "biweekly", "monthly")
+
+# The label the page shows next to each schedule. `once` says what it does,
+# nothing more; the rest read as a person would say them out loud.
+LABELS = {
+    "once": "Una vez",
+    "hourly": "Cada hora",
+    "every_3h": "Cada 3 horas",
+    "twice_daily": "Dos veces por día",
+    "daily": "Todos los días",
+    "weekdays": "Días de semana",
+    "weekly": "Todas las semanas",
+    "biweekly": "Cada dos semanas",
+    "monthly": "Todos los meses",
+}
 
 # A job outside these two states is still open: a template whose last job
 # is open gets skipped instead of piling a second, identical job on top.
@@ -145,6 +160,22 @@ def retry(conn: sqlite3.Connection, job_id: int) -> None:
 
 # --- schedules: a recurring task is a template, not a copy ---------------
 
+def _next_clock(now: dt.datetime, hours: tuple[int, ...]) -> dt.datetime:
+    """The next moment, minute zero, whose hour is one of `hours`, strictly
+    after `now`. `hourly` and `every_3h` are a fixed interval, so they add a
+    timedelta; a clock time is not an interval, since the interval it stands
+    for would depend on when the job was first queued instead of the wall
+    clock everybody else reads."""
+    today = [now.replace(hour=h, minute=0, second=0, microsecond=0)
+             for h in hours]
+    later_today = sorted(c for c in today if c > now)
+    if later_today:
+        return later_today[0]
+    tomorrow = now + dt.timedelta(days=1)
+    return tomorrow.replace(hour=min(hours), minute=0, second=0,
+                            microsecond=0)
+
+
 def next_after(schedule: str, now: dt.datetime) -> dt.datetime | None:
     """The next moment a schedule falls due, counted from `now`.
 
@@ -153,10 +184,23 @@ def next_after(schedule: str, now: dt.datetime) -> dt.datetime | None:
     """
     if schedule == "once":
         return None
+    if schedule == "hourly":
+        return now + dt.timedelta(hours=1)
+    if schedule == "every_3h":
+        return now + dt.timedelta(hours=3)
+    if schedule == "twice_daily":
+        return _next_clock(now, (9, 18))
     if schedule == "daily":
-        return now + dt.timedelta(days=1)
+        return _next_clock(now, (9,))
+    if schedule == "weekdays":
+        candidate = _next_clock(now, (9,))
+        while candidate.weekday() >= 5:      # Saturday=5, Sunday=6
+            candidate += dt.timedelta(days=1)
+        return candidate
     if schedule == "weekly":
         return now + dt.timedelta(weeks=1)
+    if schedule == "biweekly":
+        return now + dt.timedelta(weeks=2)
     if schedule == "monthly":
         month = now.month % 12 + 1
         year = now.year + (now.month // 12)

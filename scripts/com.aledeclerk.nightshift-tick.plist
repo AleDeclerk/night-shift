@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.aledeclerk.nightshift-tick</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alejandrodeclerk/repos/night-shift/.venv/bin/python</string>
+    <string>/Users/alejandrodeclerk/repos/night-shift/scripts/tick.py</string>
+  </array>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NIGHTSHIFT_CEILING_USD</key><string>20</string>
+    <!-- launchd starts with a small PATH that holds no Homebrew directory. -->
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key><string>/tmp/nightshift-tick.out.log</string>
+  <key>StandardErrorPath</key><string>/tmp/nightshift-tick.err.log</string>
+</dict></plist>

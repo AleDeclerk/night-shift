@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from nightshift import (backends, board, cascade, engines, jobs, knowledge,
-                        life, mail, projects, quota, runner, signin)
+                        life, mail, projects, quota, runner, signin, tick)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -137,6 +137,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "claude_reserve": claude_reserve,
             "projects": all_projects_rows,
             "schedules": jobs.SCHEDULES,
+            "schedule_labels": jobs.LABELS,
             "queued_knowledge": {j["id"]: job_knowledge(j) for j in jobs_queued}})
 
     @app.get("/semana")
@@ -156,6 +157,14 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
                     schedule=schedule)
         except ValueError:
             pass          # an unknown schedule changes nothing
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/queue/run")
+    def run_queue():
+        """The cheap tick, on request: it fires due templates and runs the
+        queue, for whoever does not want to wait for the next hour."""
+        tick.run(conn, runner_module=runner, workspace=backends.WORKSPACE,
+                now=dt.datetime.now(), ceiling_usd=ceiling_usd)
         return RedirectResponse("/", status_code=303)
 
     @app.post("/projects")
