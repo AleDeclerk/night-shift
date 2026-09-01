@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from nightshift import db, jobs, tick
+from nightshift import db, jobs, quota, tick
 from nightshift.runner import RunResult
 
 NOW = dt.datetime(2026, 9, 1, 12, 0)
@@ -63,20 +63,58 @@ def test_a_tick_with_a_queued_job_runs_it_and_reports_its_cost(tmp_path):
                         ).fetchone()["state"] == "done"
 
 
-def test_a_tick_over_the_ceiling_runs_no_job_and_says_why(tmp_path):
+def test_what_one_tick_spent_stops_the_next_one(tmp_path):
+    """The tick recorded its cost only in a `tick_ran` event, whose engine is
+    NULL. `quota.spent_this_week` reads `runs` and `cascade.spent_by` reads
+    the events that name an engine, so neither governor ever saw it. With the
+    plist at 3600 seconds that is 24 jobs a day past any ceiling."""
     conn = db.connect(tmp_path / "s.db")
-    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
-                 " VALUES (?, 'mail', 1, 20.0)", (NOW.isoformat(),))
-    conn.commit()
     jobs.add(conn, "one", now=NOW)
-    fake = FakeRunner({"finished": True, "summary": "done"})
+    jobs.add(conn, "two", now=NOW)
 
-    result = tick.run(conn, runner_module=fake, workspace=tmp_path,
+    first = FakeRunner({"finished": True, "summary": "done"}, cost=20.0)
+    spender = tick.run(conn, runner_module=first, workspace=tmp_path,
+                       now=NOW, ceiling_usd=20.0)
+    assert spender["jobs_run"] == 1
+    assert quota.spent_this_week(conn, NOW) == 20.0
+
+    second = FakeRunner({"finished": True, "summary": "done"})
+    result = tick.run(conn, runner_module=second, workspace=tmp_path,
                       now=NOW, ceiling_usd=20.0)
     assert result["jobs_run"] == 0
     assert result["cost_usd"] == 0.0
     assert result["reason"]
-    assert fake.calls == []            # the runner never ran
+    assert second.calls == []            # the runner never ran
+
+
+def test_a_tick_is_not_the_last_good_mail_cycle(tmp_path):
+    """The mail window starts where the last good MAIL cycle started. A tick
+    now writes a run too, and an hourly tick would cut that window to one
+    hour and hide every message older than it."""
+    from nightshift import cycle
+    from nightshift.mail import TriageResult
+
+    class Stub:
+        def __init__(self):
+            self.since = "not asked"
+
+        def triage(self, *a, **kw):
+            self.since = kw.get("since")
+            return TriageResult([], 0.5, None)
+
+    conn = db.connect(tmp_path / "s.db")
+    first = Stub()
+    cycle.run_once(conn, runner_module=first, mail_module=first, now=NOW,
+                   ceiling_usd=45.0, workspace=tmp_path)
+
+    tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path,
+             now=NOW + dt.timedelta(hours=1), ceiling_usd=45.0)
+
+    second = Stub()
+    cycle.run_once(conn, runner_module=second, mail_module=second,
+                   now=NOW + dt.timedelta(hours=2), ceiling_usd=45.0,
+                   workspace=tmp_path)
+    assert second.since == NOW.isoformat()
 
 
 def test_max_jobs_caps_how_many_run_in_one_tick(tmp_path):
@@ -100,3 +138,29 @@ def test_a_tick_that_did_something_writes_one_tick_ran_event(tmp_path):
     tick.run(conn, runner_module=fake, workspace=tmp_path, now=NOW,
              ceiling_usd=20.0)
     assert len(_events(conn, "tick_ran")) == 1
+
+
+def test_a_tick_that_spent_leaves_a_run_the_governor_reads(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "one", now=NOW)
+    fake = FakeRunner({"finished": True, "summary": "done"}, cost=0.42)
+
+    tick.run(conn, runner_module=fake, workspace=tmp_path, now=NOW,
+             ceiling_usd=20.0)
+    row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["kind"] == "tick"
+    assert row["cost_usd"] == 0.42
+    assert row["ok"] == 1
+    assert row["finished_at"] is not None
+
+
+def test_a_tick_that_did_nothing_still_closes_its_run(tmp_path):
+    """A run that never ends reads as a cycle that died, and the page says
+    so. Every exit of the tick closes the row it opened."""
+    conn = db.connect(tmp_path / "s.db")
+    tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path, now=NOW,
+             ceiling_usd=20.0)
+    row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["kind"] == "tick"
+    assert row["ok"] == 1
+    assert row["cost_usd"] == 0.0

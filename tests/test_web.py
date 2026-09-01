@@ -827,3 +827,24 @@ def test_the_sign_in_link_never_leaves_this_machine(tmp_path):
     r = client.post("/machines/cursor/login",
                     headers={"origin": "https://evil.example"})
     assert r.status_code == 403
+
+
+def test_a_tick_does_not_hide_what_the_mail_cycle_did(tmp_path):
+    """The tick writes a run of its own, once an hour. The two lines at the
+    top of the page speak about the mail: a tick that ran clean would
+    otherwise cover the error of the last cycle and pass as the last good
+    one."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok)"
+                 " VALUES ('2026-08-30T06:30:00','mail',1)")
+    conn.execute("INSERT INTO runs (started_at, kind, ok, error)"
+                 " VALUES ('2026-08-31T06:30:00','mail',0,"
+                 "'401 OAuth access token has expired')")
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES ('2026-09-01T10:00:00','tick',1,0.4)")
+    conn.commit()
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                ceiling_usd=5.0)).get("/").text
+    assert "401" in body        # the error of the mail cycle still shows
+    assert "30 Aug" in body     # and the last good cycle is the mail one
+    assert "01 Sep" not in body

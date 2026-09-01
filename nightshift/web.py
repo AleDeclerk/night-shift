@@ -120,11 +120,15 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
                 f"SELECT * FROM jobs WHERE state IN ({marks}) ORDER BY id DESC",
                 states).fetchall()
 
+        # Both lines speak about the mail. The tick writes a run of its own
+        # once an hour, and a clean tick would otherwise cover the error of
+        # the last cycle and pass as the last good one.
         last = conn.execute(
-            "SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
-        good = conn.execute(
-            "SELECT * FROM runs WHERE ok = 1 ORDER BY id DESC LIMIT 1"
+            "SELECT * FROM runs WHERE kind = 'mail' ORDER BY id DESC LIMIT 1"
         ).fetchone()
+        good = conn.execute(
+            "SELECT * FROM runs WHERE ok = 1 AND kind = 'mail'"
+            " ORDER BY id DESC LIMIT 1").fetchone()
         now = dt.datetime.now()
         spent = quota.spent_this_week(conn, now)
         claude_ceiling = cascade.ceiling_of(cascade.LADDER[0])

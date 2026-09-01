@@ -2,28 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import cascade, engines, jobs, life, mail, quota, projects
-
-
-def _start_run(conn, now, kind) -> int:
-    cur = conn.execute("INSERT INTO runs (started_at, kind) VALUES (?,?)",
-                       (now.isoformat(), kind))
-    conn.commit()
-    return cur.lastrowid
-
-
-def _end_run(conn, run_id, ok, cost=0.0, error=None, now=None) -> None:
-    """`now` travels with the event: the cascade reads `events.at` to decide
-    whether an engine has room, so the record must share the clock of the
-    cycle instead of reading its own."""
-    conn.execute(
-        "UPDATE runs SET finished_at=?, ok=?, cost_usd=?, error=? WHERE id=?",
-        (dt.datetime.now().isoformat(), 1 if ok else 0, cost, error, run_id))
-    conn.commit()
-    # One `cycle_ran` event per run, on every exit of this function, so the
-    # weekly board reads the same history whether the cycle finished clean or
-    # stopped early on quota or on a broken tool.
-    life.record(conn, "cycle_ran", cost_usd=cost, detail=error, now=now)
+from nightshift import cascade, engines, jobs, life, mail, quota, projects, runs
 
 
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
@@ -43,16 +22,19 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
 
     # The window starts where the last good cycle started, so the system never
     # pays twice to classify the same mail, and a gap of days widens it alone.
+    # `kind = 'mail'` matters: the tick also writes a run, once an hour, and
+    # without this the window would start at the last tick and hide every
+    # message older than one hour.
     previous = conn.execute(
-        "SELECT started_at FROM runs WHERE ok = 1 ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+        "SELECT started_at FROM runs WHERE ok = 1 AND kind = 'mail'"
+        " ORDER BY id DESC LIMIT 1").fetchone()
     since = previous["started_at"] if previous else None
 
-    run_id = _start_run(conn, now, "mail")
+    run_id = runs.start(conn, now, "mail")
 
     decision = quota.may_run(conn, now=now, ceiling_usd=ceiling_usd)
     if not decision.allowed:
-        _end_run(conn, run_id, False, error=decision.reason, now=now)
+        runs.end(conn, run_id, False, error=decision.reason, now=now)
         return
 
     # Rule 2 of the cascade design: only Claude holds the Gmail connector, so
@@ -61,7 +43,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # and waits for the next day.
     room_ok, room_reason = cascade.has_room(conn, cascade.LADDER[0], now)
     if not room_ok:
-        _end_run(conn, run_id, True, error=room_reason, now=now)
+        runs.end(conn, run_id, True, error=room_reason, now=now)
         return
 
     # There is no separate health check. It costs as much as the work that it
@@ -69,7 +51,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     result = mail_module.triage(runner_module, cwd=workspace, since=since)
     spent = result.cost_usd
     if result.error:
-        _end_run(conn, run_id, False, cost=spent, error=result.error[:400], now=now)
+        runs.end(conn, run_id, False, cost=spent, error=result.error[:400], now=now)
         return
 
     # Which engine composes the reply. A fixed name runs exactly as before;
@@ -123,7 +105,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                 life.record(conn, "draft_written", item_id=item_id,
                             engine=compose_engine, cost_usd=draft_cost, now=now)
         except Exception as exc:  # noqa: BLE001
-            _end_run(conn, run_id, False, cost=spent,
+            runs.end(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400], now=now)
             return
 
@@ -152,6 +134,6 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             spent += jobs.run_next(conn, runner_module, workspace,
                                    engine=job_engine)
     except Exception as exc:  # noqa: BLE001
-        _end_run(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400], now=now)
+        runs.end(conn, run_id, False, cost=spent, error=f"job: {exc}"[:400], now=now)
         return
-    _end_run(conn, run_id, True, cost=spent, now=now)
+    runs.end(conn, run_id, True, cost=spent, now=now)
