@@ -45,9 +45,16 @@ class Engine:
     can_work_mail: bool = False
 
 
-# Cursor approves an MCP server per directory, so a check that runs somewhere
-# else measures a different machine than the one the runner uses.
+# Where the work happens: the mail drafts and the jobs. No MCP server is ever
+# approved here, and no command that runs here carries --approve-mcps.
 WORKSPACE = pathlib.Path.home() / ".night-shift" / "workspace"
+
+# Where the probes happen, and nothing else. Cursor approves an MCP server per
+# directory and it has no --allowedTools, so a probe that approved the Gmail
+# connector in WORKSPACE would leave send_message, forward, reply and trash
+# reachable for every draft that Cursor composes there, with the text of a
+# stranger in the prompt. Rule 2 of the specification forbids that.
+PROBE_DIR = pathlib.Path.home() / ".night-shift" / "probe"
 
 
 def _shell(args, runner=None, cwd=None) -> str:
@@ -190,6 +197,9 @@ PROBE_COMMANDS = {
                "--allowedTools", mail.READ_TOOLS],
     "gemini": ["gemini", "-p", PROBE_PROMPT, "-o", "json",
                "--approval-mode", "yolo"],
+    # --approve-mcps stays, and it is safe only because this command runs in
+    # PROBE_DIR. The probe exists to learn whether the connector answers, and
+    # today it answers no: Google refuses a client that it did not register.
     "cursor": ["cursor-agent", "-p", PROBE_PROMPT, "--output-format", "json",
                "--approve-mcps", "--force"],
     # `ollama run` only writes text. The DeepSeek Harness gives the same local
@@ -245,11 +255,12 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
     if command is None:
         return ProbeResult(engine, False, False, 0.0, "unknown engine")
 
-    cwd = workspace or WORKSPACE
+    cwd = pathlib.Path(workspace or PROBE_DIR)
     try:
         if runner is not None:
             raw = runner(command, cwd=cwd)
         else:
+            cwd.mkdir(parents=True, exist_ok=True)   # made on demand
             out = subprocess.run(command, cwd=cwd, capture_output=True,
                                  text=True, timeout=PROBE_TIMEOUT,
                                  env={**os.environ, **probe_env(engine)})

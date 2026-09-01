@@ -146,3 +146,27 @@ def test_noise_on_stderr_does_not_break_the_json():
     r = backends.probe("claude", runner=noisy)
     assert r.can_mail is True
     assert r.cost_usd == 0.42
+
+
+def test_the_probe_never_runs_where_the_work_runs():
+    """Rule 2 of the specification: the agent writes drafts and it never
+    sends. Cursor approves an MCP server per directory, and its Gmail
+    connector exposes send_message, forward, reply and trash. One probe in
+    the workspace would leave those tools reachable for every draft that
+    Cursor composes there, and Cursor has no --allowedTools to hold them
+    back. So every probe runs in a directory of its own.
+    """
+    import pathlib
+
+    seen = {}
+
+    def spy(command, cwd=None):
+        seen["cwd"] = cwd
+        return '{"result":"MAIL-OK"}'
+
+    for engine in backends.PROBE_COMMANDS:
+        backends.probe(engine, runner=spy)
+        assert pathlib.Path(seen["cwd"]) == backends.PROBE_DIR, engine
+
+    assert backends.PROBE_DIR != backends.WORKSPACE
+    assert backends.WORKSPACE not in backends.PROBE_DIR.parents

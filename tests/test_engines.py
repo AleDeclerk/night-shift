@@ -194,3 +194,15 @@ def test_a_missing_binary_still_names_itself():
     """When nothing resolves, the command keeps the plain name so the error
     says which binary was missing instead of a bare path."""
     assert engines.binary_for("nothing-here") == "nothing-here"
+
+
+def test_no_command_of_the_work_approves_an_mcp_server():
+    """The probes approve a connector to learn whether it answers. The work
+    never does: Cursor approves an MCP server per directory, so one
+    --approve-mcps in the workspace hands every later compose a send tool.
+    """
+    for name in engines.JOB_ENGINES:
+        if name == "auto":
+            continue
+        command = engines.command_for(name, "x") or []
+        assert "--approve-mcps" not in command, name
