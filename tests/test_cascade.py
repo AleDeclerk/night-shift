@@ -1,6 +1,6 @@
 import datetime as dt
 
-from nightshift import backends, cascade, db
+from nightshift import backends, cascade, db, quota, usage
 
 # Same week as tests/test_quota.py, one calendar day per test.
 MON = dt.datetime(2026, 8, 24, 9, 0)
@@ -265,3 +265,141 @@ def test_last_fall_gives_the_detail_of_the_most_recent_fall(tmp_path):
         " (?, 'engine_chosen', 'grok', 'claude: no room')", (WED.isoformat(),))
     conn.commit()
     assert cascade.last_fall(conn) == "claude: no room"
+
+
+# --- the governor reads the real quota instead of counting --------------
+
+# The measurement of 2026-09-01, from the design: the week resets on Tuesday
+# at 05:59, so a Tuesday evening leaves seven days.
+REAL_NOW = dt.datetime(2026, 9, 1, 18, 0)
+WEEK_RESETS = dt.datetime(2026, 9, 8, 5, 59)
+SESSION_RESETS = dt.datetime(2026, 9, 1, 20, 39)
+
+
+def _store_reading(conn, monkeypatch, *, week_pct=4, session_pct=35,
+                   now=REAL_NOW):
+    """Keep a reading the way a tick does, through the real writer, with no
+    CLI behind it."""
+    reading = usage.Usage(week_pct=week_pct, week_resets=WEEK_RESETS,
+                          session_pct=session_pct,
+                          session_resets=SESSION_RESETS)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: reading)
+    quota.read_usage(conn, cwd="/tmp", now=now)
+    return reading
+
+
+def test_a_real_reading_gives_claude_room_and_names_the_numbers(tmp_path,
+                                                                monkeypatch):
+    """Week 4% used and seven days left: the reserve is 70 points and the
+    system may still use 26."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=4)
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], REAL_NOW)
+
+    assert ok is True
+    assert "week 4% used" in reason
+    assert "7 days left" in reason
+    assert "reserve 70" in reason
+    assert "allowance 26" in reason
+
+
+def test_a_week_at_forty_leaves_claude_no_room(tmp_path, monkeypatch):
+    """40% used and 70 points reserved: the allowance is zero."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=40)
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], REAL_NOW)
+
+    assert ok is False
+    assert "allowance 0" in reason
+
+
+def test_a_session_over_ninety_stops_claude_until_it_resets(tmp_path,
+                                                            monkeypatch):
+    """A session at 100% fails every call, and a failed call still costs."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=4, session_pct=95)
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], REAL_NOW)
+
+    assert ok is False
+    assert "session 95% used" in reason
+    assert "20:39" in reason
+
+
+def test_with_no_reading_the_counting_path_decides(tmp_path):
+    """Rule 1 of the design: a blank `/usage` is not permission. The old
+    governor, with its typed ceiling, is the floor."""
+    conn = db.connect(tmp_path / "s.db")
+    _event(conn, "claude", cost_usd=15.0, at=WED)   # over Wednesday's 12
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], WED)
+
+    assert ok is False
+    assert "no real reading, counting" in reason
+    assert "spent 15.00" in reason
+
+
+def test_with_no_reading_a_quiet_week_still_has_room(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    _event(conn, "claude", cost_usd=1.0, at=WED)
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], WED)
+    assert ok is True
+    assert "no real reading, counting" in reason
+
+
+def test_a_stale_reading_never_widens_the_room(tmp_path, monkeypatch):
+    """A reading of two hours ago says nothing about the room of now. The
+    governor counts again, and the count stops the system."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=4, now=WED)
+    _event(conn, "claude", cost_usd=15.0, at=WED)
+
+    later = WED + dt.timedelta(hours=2)
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], later)
+
+    assert ok is False
+    assert "no real reading, counting" in reason
+
+
+def test_a_reading_replaces_the_count_on_the_claude_step(tmp_path,
+                                                         monkeypatch):
+    """The allowance already holds the reserve, so the day of the week and
+    the counted spend stop deciding here. `quota.may_run` stays the floor."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=4)
+    _event(conn, "claude", cost_usd=99.0, at=REAL_NOW)
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES (?, 'mail', 1, 99.0)", (REAL_NOW.isoformat(),))
+    conn.commit()
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[0], REAL_NOW)
+
+    assert ok is True
+    assert "99" not in reason
+    assert quota.may_run(conn, REAL_NOW, 20.0).allowed is False
+
+
+def test_a_reading_leaves_the_cursor_steps_counting(tmp_path, monkeypatch):
+    """Rule 4 of the design: Cursor reports no usage, so its ceiling stays a
+    count of calls."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=4)
+    for _ in range(60):
+        _event(conn, "cursor", cost_usd=0.0, at=REAL_NOW)
+
+    ok, reason = cascade.has_room(conn, cascade.LADDER[1], REAL_NOW)
+
+    assert ok is False
+    assert "calls" in reason
+
+
+def test_a_full_week_makes_the_ladder_fall_to_grok(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, monkeypatch, week_pct=40)
+
+    step, skipped = cascade.choose(conn, REAL_NOW, probes={}, engines=ALL_ON)
+
+    assert step.name == "grok"
+    assert any("allowance 0" in line for line in skipped)

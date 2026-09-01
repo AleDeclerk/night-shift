@@ -1,8 +1,13 @@
 """Which engine takes the next call.
 
-No command reports how much quota a subscription has left, so this counts what
-this system spent against a ceiling the user set. It never claims to know the
-real balance.
+Claude reports the real quota: `claude -p /usage` gives the share of the week
+already used and the moment it resets. So the first step of the ladder reads
+the number instead of counting its own spend against a ceiling somebody
+typed. Every other engine reports nothing, and those steps still count.
+
+When no fresh reading exists the counting path decides, exactly as before.
+Rule 1 of the design: a blank `/usage` is not permission, so a missing
+reading makes the system more careful, never less.
 """
 import dataclasses
 import datetime as dt
@@ -45,6 +50,34 @@ def ceiling_of(step: Step) -> float:
     return quota.ceiling_usd() if step.ceiling is None else step.ceiling
 
 
+# The share of the week kept for each day left before the reset. The user set
+# this rule over a ceiling that was a guess; it now runs over the real week.
+RESERVE_PER_DAY = 10
+
+# A session over this share fails calls, and a failed call still costs. So
+# the system waits for the reset instead of paying for errors.
+SESSION_CEILING = 90
+
+
+def _real_room(conn: sqlite3.Connection,
+               now: dt.datetime) -> tuple[bool, str] | None:
+    """What the real quota says about Claude, or None when no fresh reading
+    exists. The reserve lives inside the allowance here, so `reserve_for`
+    has no part in this path.
+    """
+    reading = quota.last_usage(conn, now)
+    if reading is None:
+        return None
+    if reading.session_pct >= SESSION_CEILING:
+        return False, (f"session {reading.session_pct}% used, waits for the"
+                       f" reset at {reading.session_resets:%H:%M}")
+    days = reading.days_left(now)
+    allowance = reading.allowance_pct(now, RESERVE_PER_DAY)
+    return allowance > 0, (
+        f"week {reading.week_pct}% used, {days} days left,"
+        f" reserve {days * RESERVE_PER_DAY}, allowance {allowance}")
+
+
 def reserve_for(now: dt.datetime, ceiling: float) -> float:
     """One tenth of the ceiling for each day left before the Monday reset.
 
@@ -84,6 +117,11 @@ def has_room(conn: sqlite3.Connection, step: Step,
     if step.unit == "none":
         return True, "the local engine has no ceiling"
 
+    if step.name == "claude":
+        real = _real_room(conn, now)
+        if real is not None:
+            return real
+
     spent = spent_by(conn, step.engine, now)
     ceiling = ceiling_of(step)
     limit = ceiling
@@ -91,7 +129,8 @@ def has_room(conn: sqlite3.Connection, step: Step,
     if step.unit == "usd":
         reserve = reserve_for(now, ceiling)
         limit = ceiling - reserve
-        note = f", today's reserve holds back {reserve:.2f}"
+        note = (f", today's reserve holds back {reserve:.2f}"
+                ", no real reading, counting")
 
     ok = spent < limit
     reason = (f"{step.name} spent {spent:.2f} of {ceiling:.2f} "
