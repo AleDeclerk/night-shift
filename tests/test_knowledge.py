@@ -75,3 +75,27 @@ def test_about_gives_an_empty_list_when_the_file_is_unreadable(tmp_path):
 
 def test_about_gives_an_empty_list_for_no_graph_path(tmp_path):
     assert knowledge.about(None, "brailleai") == []
+
+
+# --- stop words: a function word must not score like a real one -----------
+
+def test_about_matches_nothing_when_the_task_is_only_stop_words(tmp_path):
+    """Before the stop list, a stop word in the task scored like a real one
+    against a node whose label happens to carry the same stop word."""
+    graph_path = tmp_path / "graph.json"
+    _write_graph(graph_path, [
+        {"id": "n1", "label": "The Plan For The Team",
+         "norm_label": "the plan for the team", "community": 1},
+    ])
+    assert knowledge.about(str(graph_path), "the a and for with de la el en") == []
+
+
+def test_about_still_matches_braille_past_the_stop_words(tmp_path):
+    graph_path = tmp_path / "graph.json"
+    _write_graph(graph_path, [
+        {"id": "brailleai", "label": "Braille", "norm_label": "braille",
+         "community": 1},
+    ])
+    hits = knowledge.about(str(graph_path), "the braille pipeline")
+    assert len(hits) == 1
+    assert hits[0]["label"] == "Braille"
