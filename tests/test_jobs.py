@@ -268,3 +268,31 @@ def test_run_next_reaps_a_stale_job_before_picking_the_next_one(tmp_path):
     jobs.run_next(conn, fake, tmp_path)
 
     assert jobs.get(conn, stuck_id)["state"] == "failed"
+
+
+def test_a_when_idle_template_queues_no_turn_when_it_is_made(tmp_path):
+    """`Cuando sobre` means what it says.
+
+    Every other recurring schedule queues its first turn at once, because
+    the clock is its gate and the clock says now. The gate of this one is
+    the room the week has left, and making the template says nothing about
+    that room. So the first turn waits for `fire_templates`, exactly like
+    every turn after it.
+    """
+    conn = db.connect(tmp_path / "s.db")
+    now = dt.datetime(2026, 9, 1, 18, 0)
+
+    jobs.add(conn, "leer las novedades", schedule="when_idle", now=now)
+
+    queued = conn.execute(
+        "SELECT COUNT(*) c FROM jobs WHERE state='queued'").fetchone()["c"]
+    assert queued == 0
+    template = conn.execute(
+        "SELECT * FROM jobs WHERE state='template'").fetchone()
+    assert template["schedule"] == "when_idle"
+
+    # With room, the next call to `fire_templates` makes the turn.
+    jobs.fire_templates(conn, now, allowance_pct=40)
+    queued = conn.execute(
+        "SELECT COUNT(*) c FROM jobs WHERE state='queued'").fetchone()["c"]
+    assert queued == 1

@@ -99,7 +99,8 @@ def add(conn: sqlite3.Connection, prompt: str, *, project_id: int | None = None,
     Any other schedule makes a template (section 4 of the design) and, at
     the same time, the first job it stands for. From then on
     `jobs.fire_templates` makes the rest, one at a time, as each turn comes
-    due.
+    due. `when_idle` is the exception: it queues no first turn, because its
+    gate is the allowance and not the clock. It gives the template id.
     """
     if schedule not in SCHEDULES:
         raise ValueError(f"Unknown schedule: {schedule}")
@@ -118,6 +119,12 @@ def add(conn: sqlite3.Connection, prompt: str, *, project_id: int | None = None,
     template_id = cur.lastrowid
     life.record(conn, "job_queued", job_id=template_id, detail=prompt[:200],
                now=now)
+
+    if schedule == "when_idle":
+        # The gate of this schedule is the room the week has left, and
+        # making the template says nothing about that room. Its first turn
+        # waits for `fire_templates`, like every turn after it.
+        return template_id
 
     return _spawn_job(conn, prompt=prompt, project_id=project_id,
                       template_id=template_id, now=now)
