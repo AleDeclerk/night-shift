@@ -106,13 +106,45 @@ def test_opening_an_item_records_the_time(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     conn.execute("INSERT INTO runs (started_at, kind, ok) VALUES ('x','mail',1)")
     conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
-                 " source_url) VALUES (1,'x','needs_you','t','https://x/1')")
+                 " source_url) VALUES (1,'x','needs_you','t',"
+                 "'https://mail.google.com/mail/u/0/#inbox/m1')")
     conn.commit()
     client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.get("/open/1", follow_redirects=False)
-    assert r.headers["location"] == "https://x/1"
+    assert r.headers["location"] == "https://mail.google.com/mail/u/0/#inbox/m1"
     assert conn.execute("SELECT opened_at FROM items WHERE id=1"
                         ).fetchone()[0] is not None
+
+
+def test_open_refuses_a_redirect_to_a_url_outside_gmail_and_this_app(
+        tmp_path):
+    """The model proposes source_url from a stranger's mail. Without this
+    check /open is an open redirect: any URL an item carries would send the
+    browser wherever that mail wanted."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok) VALUES ('x','mail',1)")
+    conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
+                 " source_url) VALUES (1,'x','needs_you','t',"
+                 "'https://evil.example/steal')")
+    conn.commit()
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.get("/open/1", follow_redirects=False)
+    assert r.status_code == 400
+    assert conn.execute("SELECT opened_at FROM items WHERE id=1"
+                        ).fetchone()[0] is None
+
+
+def test_open_redirects_to_a_path_of_this_app(tmp_path):
+    """The budget card's source is `/semana`, not a Gmail link."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok) VALUES ('x','mail',1)")
+    conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
+                 " source_url) VALUES (1,'x','needs_you','t','/semana')")
+    conn.commit()
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.get("/open/1", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/semana"
 
 
 def test_a_job_that_needs_you_shows_its_question(tmp_path):

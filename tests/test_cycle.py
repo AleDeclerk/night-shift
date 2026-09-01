@@ -178,6 +178,21 @@ def test_the_drafts_that_the_budget_stopped_are_visible(tmp_path):
     assert any("budget" in t.lower() for t in titles), titles
 
 
+def test_the_budget_card_links_to_the_week_page(tmp_path):
+    """Rule 3 of the spec: no source, no item. An empty source_url also made
+    `/open` redirect to itself: the browser resolves that to the current
+    page, a silent loop."""
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    items = [Item("needs_you", f"m{i}", "w", f"https://x/{i}") for i in range(5)]
+    cycle.run_once(conn, runner_module=Stub(items=items, cost=0.5),
+                   mail_module=Stub(items=items, cost=0.5),
+                   now=NOW, ceiling_usd=2.0, workspace=tmp_path)
+    row = conn.execute(
+        "SELECT source_url FROM items WHERE title LIKE '%budget%'").fetchone()
+    assert row["source_url"] == "/semana"
+
+
 def test_the_item_keeps_the_trace_of_its_draft(tmp_path):
     """The cycle threw away what the agent said it wrote, so nothing on the
     page could show that a draft came out empty."""

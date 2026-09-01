@@ -122,7 +122,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             (run_id, now.isoformat(), "needs_you",
              f"The budget stopped {stopped_by_budget} drafts",
              "The weekly ceiling was reached. Raise NIGHTSHIFT_CEILING_USD, or "
-             "wait for the next week, then run the cycle again.", ""))
+             "wait for the next week, then run the cycle again.", "/semana"))
         conn.commit()
 
     # One job for each cycle, and only with budget left. Wrapped like the item

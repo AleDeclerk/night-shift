@@ -32,6 +32,20 @@ LOCAL_NAMES = ("127.0.0.1", "localhost")
 # in no table and in no log.
 _FLOWS: dict = {}
 
+# `open_item` reads `source_url` from a row the triage wrote, and the triage
+# reads that field from whatever the model proposed after reading a
+# stranger's mail. Redirecting anywhere it names would be an open redirect.
+GMAIL_PREFIX = "https://mail.google.com/"
+
+
+def _safe_redirect(url: str) -> str | None:
+    """The only two places `/open` may send the browser: a real Gmail link,
+    or a path of this app, such as `/semana`. Anything else gives None, and
+    the caller answers 400 instead of following it."""
+    if url.startswith(GMAIL_PREFIX) or url.startswith("/"):
+        return url
+    return None
+
 
 def _trouble(last) -> str | None:
     """A run that dies between its start and its end leaves `ok` NULL and no
@@ -247,11 +261,15 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
         """Section 9 of the spec: the page counts what you read."""
         row = conn.execute("SELECT source_url FROM items WHERE id=?",
                            (item_id,)).fetchone()
+        target = _safe_redirect(row["source_url"] if row else "/")
+        if target is None:
+            return PlainTextResponse(
+                "This page opens a Gmail link or a page of its own, "
+                "nothing else.", status_code=400)
         conn.execute("UPDATE items SET opened_at=? WHERE id=?",
                      (dt.datetime.now().isoformat(), item_id))
         conn.commit()
-        return RedirectResponse(row["source_url"] if row else "/",
-                                status_code=303)
+        return RedirectResponse(target, status_code=303)
 
     # Registered before the generic /items/{item_id}/{verb} below: Starlette
     # matches routes in the order they were added, and "rehacer" needs its
