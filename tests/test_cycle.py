@@ -459,7 +459,7 @@ def test_a_crash_in_projects_sync_still_leaves_a_run_row(tmp_path, monkeypatch):
 def test_a_crash_in_fire_templates_still_leaves_a_run_row(tmp_path, monkeypatch):
     conn = db.connect(tmp_path / "s.db")
 
-    def boom(conn_arg, now_arg):
+    def boom(conn_arg, now_arg, **kw):
         raise RuntimeError("bad template row")
 
     monkeypatch.setattr(cycle.jobs, "fire_templates", boom)
@@ -614,3 +614,53 @@ def test_a_cycle_that_never_fetched_the_mail_asks_for_no_reading(tmp_path,
                    ceiling_usd=5.0, workspace=tmp_path)
 
     assert asked == []
+
+
+# --- when_idle: the cycle gives it the allowance it already has ---------
+
+QUIET = usage.Usage(week_pct=4,
+                    week_resets=dt.datetime(2026, 8, 29, 5, 59),
+                    session_pct=10,
+                    session_resets=dt.datetime(2026, 8, 26, 8, 39))
+
+
+def _store(conn, monkeypatch, reading, now=NOW):
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: reading)
+    quota.read_usage(conn, cwd="/tmp", now=now)
+
+
+def test_the_cycle_fires_the_standing_work_with_the_room_it_has(
+        tmp_path, monkeypatch):
+    """Four points used and four days left: the reserve is 40 and the
+    allowance is 56, well above the threshold of 15."""
+    from nightshift import jobs
+    conn = db.connect(tmp_path / "s.db")
+    _store(conn, monkeypatch, QUIET)
+    jobs.add(conn, "watch the CFP deadlines", schedule="when_idle", now=NOW)
+    conn.execute("UPDATE jobs SET state='done' WHERE state='queued'")
+    conn.commit()
+
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=20.0, workspace=tmp_path)
+
+    fired = conn.execute(
+        "SELECT count(*) FROM events WHERE kind='template_fired'").fetchone()[0]
+    assert fired == 1
+
+
+def test_the_cycle_leaves_the_standing_work_waiting_with_no_reading(
+        tmp_path):
+    from nightshift import jobs
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "watch the CFP deadlines", schedule="when_idle", now=NOW)
+    conn.execute("UPDATE jobs SET state='done' WHERE state='queued'")
+    conn.commit()
+
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=20.0, workspace=tmp_path)
+
+    row = conn.execute(
+        "SELECT detail FROM events WHERE kind='template_skipped'").fetchone()
+    assert row["detail"] == "no reading"

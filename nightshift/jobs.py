@@ -10,7 +10,12 @@ from nightshift import life
 from nightshift import engines
 
 SCHEDULES = ("once", "hourly", "every_3h", "twice_daily", "daily",
-             "weekdays", "weekly", "biweekly", "monthly")
+             "weekdays", "weekly", "biweekly", "monthly", "when_idle")
+
+# What a `when_idle` template needs of the week before it takes a turn, in
+# points of the real quota. Room with nothing to do is idle quota, and work
+# that runs when the week is busy takes the room the user paid for.
+IDLE_THRESHOLD = 15
 
 # The label the page shows next to each schedule. `once` says what it does,
 # nothing more; the rest read as a person would say them out loud.
@@ -24,6 +29,7 @@ LABELS = {
     "weekly": "Todas las semanas",
     "biweekly": "Cada dos semanas",
     "monthly": "Todos los meses",
+    "when_idle": "Cuando sobre",
 }
 
 # A job outside these two states is still open: a template whose last job
@@ -193,6 +199,10 @@ def next_after(schedule: str, now: dt.datetime) -> dt.datetime | None:
     """
     if schedule == "once":
         return None
+    if schedule == "when_idle":
+        # Always due. The gate of this schedule is the allowance of the
+        # week, not the clock, so it waits for room and never for a date.
+        return now
     if schedule == "hourly":
         return now + dt.timedelta(hours=1)
     if schedule == "every_3h":
@@ -227,7 +237,24 @@ def due_templates(conn: sqlite3.Connection, now: dt.datetime) -> list[sqlite3.Ro
         " ORDER BY id", (now.isoformat(),)).fetchall()
 
 
-def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
+def _idle_skip(allowance_pct: int | None, already_fired: int) -> str | None:
+    """Why a `when_idle` template must wait, or None when it may go.
+
+    A missing reading is a No: rule 1 of the design says a blank `/usage`
+    is not permission. One turn fires one idle template, so standing work
+    fills the room instead of emptying it in one go.
+    """
+    if allowance_pct is None:
+        return "no reading"
+    if allowance_pct < IDLE_THRESHOLD:
+        return f"allowance {allowance_pct} below {IDLE_THRESHOLD}"
+    if already_fired:
+        return "another idle template already fired this turn"
+    return None
+
+
+def fire_templates(conn: sqlite3.Connection, now: dt.datetime,
+                   allowance_pct: int | None = None) -> dict:
     """Give every due template its turn.
 
     A turn whose previous job is still open is skipped, and the card says
@@ -236,14 +263,27 @@ def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
     `next_run` always moves forward, and an event is always written (rule 2
     of the design): a silent skip is a task that seems to run and does not.
 
+    `allowance_pct` is what the real quota leaves of the week, and only the
+    `when_idle` schedule reads it. A turn it stops keeps its `next_run`:
+    that template waits for room, so a moved turn would be a turn that
+    never comes.
+
     A dead job would otherwise read as still open for ever, so a stale one
     is reaped first: only then can this function tell a template that is
     really waiting on work from one whose last job just never came back.
     """
     reap_stale(conn, now)
     made, skipped = 0, 0
+    idle_fired = 0
     for template in due_templates(conn, now):
         template_id = template["id"]
+        if template["schedule"] == "when_idle":
+            wait = _idle_skip(allowance_pct, idle_fired)
+            if wait is not None:
+                life.record(conn, "template_skipped", job_id=template_id,
+                           detail=wait, now=now)
+                skipped += 1
+                continue        # `next_run` stays put: the turn is still due
         last_job = conn.execute(
             "SELECT state FROM jobs WHERE template_id=? ORDER BY id DESC"
             " LIMIT 1", (template_id,)).fetchone()
@@ -259,6 +299,8 @@ def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
             life.record(conn, "template_fired", job_id=template_id,
                        detail=template["prompt"][:200], now=now)
             made += 1
+            if template["schedule"] == "when_idle":
+                idle_fired += 1
 
         next_run = next_after(template["schedule"], now)
         conn.execute("UPDATE jobs SET next_run=? WHERE id=?",

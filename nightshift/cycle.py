@@ -39,7 +39,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             projects.sync(conn)
         except OSError as exc:  # a missing folder must not stop the mail
             life.record(conn, "projects_skipped", detail=str(exc)[:200], now=now)
-        jobs.fire_templates(conn, now)
+        # The allowance of the newest reading the tick left, which is what
+        # a `when_idle` template waits for. It is read from the store and it
+        # shells out to nothing: the fresh call belongs below, after the
+        # mail decision, and a stale reading counts as no reading.
+        reading = quota.last_usage(conn, now)
+        jobs.fire_templates(conn, now, allowance_pct=(
+            None if reading is None
+            else reading.allowance_pct(now, cascade.RESERVE_PER_DAY)))
     except Exception as exc:  # noqa: BLE001
         runs.end(conn, run_id, False, error=f"projects/templates: {exc}"[:400],
                  now=now)

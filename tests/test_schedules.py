@@ -254,3 +254,122 @@ def test_fire_templates_reaps_a_dead_job_and_fires_the_turn(tmp_path):
         "SELECT count(*) FROM jobs WHERE template_id=?",
         (template_id,)).fetchone()[0]
     assert count == 2
+
+
+# --- when_idle: the work that fills the room the week leaves ------------
+
+IDLE_NOW = dt.datetime(2026, 9, 1, 18, 0)
+
+
+def _idle_template(conn, now=IDLE_NOW, prompt="watch the CFP deadlines"):
+    """A `when_idle` template whose first job is already closed, so the next
+    turn is free to fire."""
+    jobs.add(conn, prompt, schedule="when_idle", now=now)
+    template = conn.execute(
+        "SELECT * FROM jobs WHERE state='template' AND prompt=?",
+        (prompt,)).fetchone()
+    conn.execute("UPDATE jobs SET state='done' WHERE state='queued'"
+                 " AND template_id=?", (template["id"],))
+    conn.commit()
+    return template
+
+
+def test_when_idle_is_a_schedule_the_page_can_offer():
+    assert "when_idle" in jobs.SCHEDULES
+    assert jobs.LABELS["when_idle"] == "Cuando sobre"
+
+
+def test_when_idle_is_always_due():
+    """The gate is the allowance, not the clock."""
+    assert jobs.next_after("when_idle", IDLE_NOW) == IDLE_NOW
+
+
+def test_when_idle_fires_with_an_allowance_of_twenty(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    template = _idle_template(conn)
+
+    result = jobs.fire_templates(conn, IDLE_NOW, allowance_pct=20)
+
+    assert result == {"made": 1, "skipped": 0}
+    fresh = conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=? AND state='queued'",
+        (template["id"],)).fetchone()[0]
+    assert fresh == 1
+
+
+def test_when_idle_does_not_fire_with_an_allowance_of_five(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    template = _idle_template(conn)
+
+    result = jobs.fire_templates(conn, IDLE_NOW, allowance_pct=5)
+
+    assert result == {"made": 0, "skipped": 1}
+    row = conn.execute(
+        "SELECT detail FROM events WHERE kind='template_skipped'").fetchone()
+    assert row["detail"] == "allowance 5 below 15"
+    queued = conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=? AND state='queued'",
+        (template["id"],)).fetchone()[0]
+    assert queued == 0
+
+
+def test_when_idle_does_not_fire_without_a_reading(tmp_path):
+    """Rule 1 of the design: a blank `/usage` is not permission."""
+    conn = db.connect(tmp_path / "s.db")
+    _idle_template(conn)
+
+    result = jobs.fire_templates(conn, IDLE_NOW)
+
+    assert result == {"made": 0, "skipped": 1}
+    row = conn.execute(
+        "SELECT detail FROM events WHERE kind='template_skipped'").fetchone()
+    assert row["detail"] == "no reading"
+
+
+def test_a_skipped_idle_template_stays_due(tmp_path):
+    """Every other schedule moves `next_run` on a skip. This one may not: it
+    waits for room, and a moved turn would be a turn that never comes."""
+    conn = db.connect(tmp_path / "s.db")
+    template = _idle_template(conn)
+
+    jobs.fire_templates(conn, IDLE_NOW, allowance_pct=5)
+
+    after = conn.execute("SELECT next_run FROM jobs WHERE id=?",
+                         (template["id"],)).fetchone()["next_run"]
+    assert after == template["next_run"]
+    assert [r["id"] for r in jobs.due_templates(conn, IDLE_NOW)] \
+        == [template["id"]]
+
+
+def test_only_one_idle_template_fires_in_one_turn(tmp_path):
+    """Standing work must fill the room, not empty it in one go."""
+    conn = db.connect(tmp_path / "s.db")
+    first = _idle_template(conn, prompt="one")
+    second = _idle_template(conn, prompt="two")
+
+    result = jobs.fire_templates(conn, IDLE_NOW, allowance_pct=40)
+
+    assert result == {"made": 1, "skipped": 1}
+    assert conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=? AND state='queued'",
+        (first["id"],)).fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=? AND state='queued'",
+        (second["id"],)).fetchone()[0] == 0
+    # The one that waited is still due, so the next turn is its own.
+    assert second["id"] in [r["id"] for r in
+                            jobs.due_templates(conn, IDLE_NOW)]
+
+
+def test_an_allowance_never_stops_the_other_schedules(tmp_path):
+    """The threshold belongs to `when_idle` alone. A daily task keeps its
+    clock, whatever the week looks like."""
+    conn = db.connect(tmp_path / "s.db")
+    now = dt.datetime(2026, 9, 1, 6, 30)
+    jobs.add(conn, "sprint review", schedule="daily", now=now)
+    jobs.finish(conn, jobs.next_queued(conn)["id"], "/tmp/out")
+
+    result = jobs.fire_templates(conn, now + dt.timedelta(days=1),
+                                 allowance_pct=0)
+
+    assert result == {"made": 1, "skipped": 0}

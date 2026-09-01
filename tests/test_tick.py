@@ -189,3 +189,68 @@ def test_a_tick_records_that_the_cli_could_not_answer(tmp_path):
              ceiling_usd=20.0)
     assert len(_events(conn, "usage_unavailable")) == 1
     assert quota.last_usage(conn, NOW) is None
+
+
+# --- when_idle: the tick gives it the allowance of the real week --------
+
+def _idle_template(conn, prompt="draft the sprint review"):
+    """A `when_idle` template with no open job of its own, so the next turn
+    is free to fire."""
+    jobs.add(conn, prompt, schedule="when_idle", now=NOW)
+    template = conn.execute(
+        "SELECT * FROM jobs WHERE state='template' AND prompt=?",
+        (prompt,)).fetchone()
+    conn.execute("UPDATE jobs SET state='done' WHERE state='queued'")
+    conn.commit()
+    return template
+
+
+def _reading(week_pct):
+    return usage.Usage(week_pct=week_pct,
+                       week_resets=dt.datetime(2026, 9, 8, 5, 59),
+                       session_pct=35,
+                       session_resets=dt.datetime(2026, 9, 1, 20, 39))
+
+
+def test_a_quiet_week_fires_the_standing_work(tmp_path, monkeypatch):
+    """Week 4% used and seven days left: the allowance is 26, above the
+    threshold of 15."""
+    conn = db.connect(tmp_path / "s.db")
+    _idle_template(conn)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: _reading(4))
+
+    result = tick.run(conn, runner_module=FakeRunner(
+        {"finished": True, "summary": "done"}), workspace=tmp_path, now=NOW,
+        ceiling_usd=20.0, max_jobs=0)
+
+    assert result["fired"] == 1
+
+
+def test_a_busy_week_leaves_the_standing_work_waiting(tmp_path, monkeypatch):
+    """Week 25% used and seven days left: the allowance is 5, below 15."""
+    conn = db.connect(tmp_path / "s.db")
+    template = _idle_template(conn)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: _reading(25))
+
+    result = tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path,
+                      now=NOW, ceiling_usd=20.0)
+
+    assert result == {"fired": 0, "skipped": 1, "jobs_run": 0,
+                      "cost_usd": 0.0, "reason": ""}
+    row = conn.execute(
+        "SELECT detail FROM events WHERE kind='template_skipped'").fetchone()
+    assert row["detail"] == "allowance 5 below 15"
+    # It waits, it does not lose its turn: the next tick asks again.
+    assert [r["id"] for r in jobs.due_templates(conn, NOW)] \
+        == [template["id"]]
+
+
+def test_without_a_reading_the_standing_work_waits(tmp_path):
+    """The conftest answers None, the way a machine with no session does."""
+    conn = db.connect(tmp_path / "s.db")
+    _idle_template(conn)
+
+    result = tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path,
+                      now=NOW, ceiling_usd=20.0)
+
+    assert result["fired"] == 0 and result["skipped"] == 1

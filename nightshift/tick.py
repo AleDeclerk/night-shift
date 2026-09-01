@@ -28,13 +28,18 @@ def run(conn: sqlite3.Connection, *, runner_module, workspace,
         # The real quota, before anything that spends. The call costs
         # nothing and it takes about three seconds, so the tick makes it and
         # the page reads what it stored.
-        quota.read_usage(conn, cwd=workspace, now=now)
+        reading = quota.read_usage(conn, cwd=workspace, now=now)
+        # What the week still allows, which is what a `when_idle` template
+        # waits for. None when the CLI gave nothing, and that template then
+        # waits: rule 1 of the design, a blank `/usage` is not permission.
+        allowance = (None if reading is None
+                     else reading.allowance_pct(now, cascade.RESERVE_PER_DAY))
 
         # Free: reading directories costs no tokens, so the dropdown stays
         # fresh on every tick instead of waiting for the next mail cycle.
         projects.sync(conn)
 
-        fired_result = jobs.fire_templates(conn, now)
+        fired_result = jobs.fire_templates(conn, now, allowance_pct=allowance)
         fired, skipped = fired_result["made"], fired_result["skipped"]
 
         if jobs.next_queued(conn) is not None:
