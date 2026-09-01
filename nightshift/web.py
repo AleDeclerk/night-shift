@@ -176,6 +176,11 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
         # A handful of projects at most: one query per row costs nothing here.
         path_counts = {p["id"]: len(projects.paths_of(conn, p["id"]))
                        for p in all_projects_rows}
+        # Not `p["graph_path"]`: that legacy column only ever holds the
+        # first folder a project was found in, and a folder merged in later
+        # can hold the only graph the project has.
+        project_graphs = {p["id"]: projects.graph_for(conn, p["id"])
+                          for p in all_projects_rows}
 
         def job_knowledge(job):
             """What the graph of a job's project already knows about it.
@@ -188,7 +193,10 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             project = projects_by_id.get(project_id)
             if project is None:
                 return None
-            graph_path = project["graph_path"]
+            # Not `project["graph_path"]`: that legacy column only ever
+            # holds the first folder a project was found in, and a folder
+            # merged in later can hold the only graph the project has.
+            graph_path = projects.graph_for(conn, project_id)
             if not graph_path:
                 return {"has_graph": False, "hits": [], "name": project["name"]}
             return {"has_graph": True,
@@ -211,6 +219,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             "job_engine": engines.get_engine(conn),
             "all_projects": all_projects_rows,
             "path_counts": path_counts,
+            "project_graphs": project_graphs,
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,

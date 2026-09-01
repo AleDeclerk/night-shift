@@ -658,6 +658,39 @@ def test_a_job_with_a_project_that_holds_no_graph_says_so(tmp_path):
     assert "no tiene grafo" in body.lower()
 
 
+def test_a_job_with_a_graph_in_the_projects_second_folder_shows_its_concepts(
+        tmp_path, monkeypatch):
+    """`projects.graph_path` only ever holds the first folder a project was
+    found in. `graph_for` looks past it, so a folder merged in later can
+    hold the only graph the project has."""
+    from nightshift import projects, web as web_module
+    conn = db.connect(tmp_path / "s.db")
+    graph_path = tmp_path / "second" / "graphify-out" / "graph.json"
+    graph_path.parent.mkdir(parents=True)
+    graph_path.write_text("{}")
+
+    project_id = projects.add(conn, "aph-knowledge", "veritas")
+    conn.execute(
+        "INSERT INTO project_paths (project_id, path, graph_path) VALUES"
+        " (?,?,NULL)", (project_id, str(tmp_path / "first")))
+    conn.execute(
+        "INSERT INTO project_paths (project_id, path, graph_path) VALUES"
+        " (?,?,?)", (project_id, str(tmp_path / "second"), str(graph_path)))
+    conn.commit()
+    conn.execute(
+        "INSERT INTO jobs (created_at, prompt, state, project_id, schedule)"
+        " VALUES ('x','fix the transcription pipeline','queued',?,'once')",
+        (project_id,))
+    conn.commit()
+
+    monkeypatch.setattr(web_module.knowledge, "about",
+                        lambda *a, **kw: [{"label": "BrailleAI Pipeline",
+                                          "community": 1, "links": []}])
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "BrailleAI Pipeline" in body
+
+
 def test_the_machine_room_lists_the_projects(tmp_path):
     """A guessed scope is a guess. The room is where the user corrects it."""
     from nightshift import projects

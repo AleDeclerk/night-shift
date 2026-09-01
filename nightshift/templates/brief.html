@@ -845,7 +845,7 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
           <option value="personal" {% if p['scope'] == 'personal' %}selected{% endif %}>PERSONAL</option>
           <option value="veritas" {% if p['scope'] == 'veritas' %}selected{% endif %}>VERITAS</option>
         </select>
-        <span class="pgraph">{% if p['graph_path'] %}con grafo{% else %}sin grafo{% endif %}</span>
+        <span class="pgraph">{% if project_graphs.get(p['id']) %}con grafo{% else %}sin grafo{% endif %}</span>
         <button type="submit">Guardar</button>
         <button type="submit" name="active" value="0" class="retire">Retirar</button>
         {% if all_projects|length > 1 %}
