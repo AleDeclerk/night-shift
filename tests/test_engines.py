@@ -25,7 +25,7 @@ def test_the_ollama_command_runs_the_harness_not_ollama_run():
     """`ollama run` only writes plain text with no sandbox or tools. The
     DeepSeek Harness gives the same local model a sandbox and shell tools."""
     command = engines.command_for("ollama", "hello")
-    assert command[0] == "dsh"
+    assert command[0].endswith("dsh")   # absolute path: launchd has no PATH
     assert "--profile" in command and "headless" in command
     assert "run" not in command
 
@@ -44,9 +44,13 @@ def test_only_ollama_receives_a_value_in_its_environment(monkeypatch, tmp_path):
     for engine in engines.JOB_ENGINES:
         engines.run("hello", engine=engine, cwd=tmp_path)
 
-    assert seen_envs["dsh"].get("OLLAMA_API_KEY") == "ollama"
-    assert "OLLAMA_API_KEY" not in seen_envs["claude"]
-    assert "OLLAMA_API_KEY" not in seen_envs["cursor-agent"]
+    # The keys are absolute paths now, because launchd carries no PATH.
+    def env_of(binary):
+        return next(v for k, v in seen_envs.items() if k.endswith(binary))
+
+    assert env_of("dsh").get("OLLAMA_API_KEY") == "ollama"
+    assert "OLLAMA_API_KEY" not in env_of("claude")
+    assert "OLLAMA_API_KEY" not in env_of("cursor-agent")
 
 
 # --- run: failure and error paths -------------------------------------
@@ -171,3 +175,22 @@ def test_no_command_ever_carries_bare_mode():
         assert "--bare" not in command, command
     for name in engines.JOB_ENGINES:
         assert "--bare" not in (engines.command_for(name, "x") or []), name
+
+
+def test_every_command_names_an_absolute_binary():
+    """launchd runs with a small PATH that holds neither Homebrew nor
+    ~/.local/bin. On 2026-09-01 the scheduled cycle failed with
+    `Cannot start cursor-agent: No such file or directory` while doing a real
+    job. The same bug was fixed for `claude` alone, and it bit the next engine.
+    """
+    for name in engines.JOB_ENGINES:
+        if name == "auto":
+            continue
+        command = engines.command_for(name, "x")
+        assert command[0].startswith("/"), f"{name}: {command[0]}"
+
+
+def test_a_missing_binary_still_names_itself():
+    """When nothing resolves, the command keeps the plain name so the error
+    says which binary was missing instead of a bare path."""
+    assert engines.binary_for("nothing-here") == "nothing-here"

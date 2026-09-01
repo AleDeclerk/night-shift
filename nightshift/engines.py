@@ -7,6 +7,8 @@ must not lose its work.
 import dataclasses
 import json
 import os
+import shutil
+import pathlib
 import re
 import subprocess
 
@@ -40,6 +42,29 @@ class EngineRun:
     error: str | None = None
 
 
+
+# launchd starts with a PATH that holds neither Homebrew nor ~/.local/bin, so a
+# bare name does not resolve. On 2026-09-01 a scheduled job died with
+# `Cannot start cursor-agent: No such file or directory` while doing real work.
+# The same bug was fixed for `claude` alone, and it bit the next engine, so this
+# resolves every one of them in one place.
+FALLBACK_DIRS = ("/opt/homebrew/bin", "/usr/local/bin",
+                 str(pathlib.Path.home() / ".local/bin"))
+
+
+def binary_for(name: str) -> str:
+    """An absolute path to a CLI. The plain name when nothing resolves, so the
+    error names the binary that was missing."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for folder in FALLBACK_DIRS:
+        candidate = pathlib.Path(folder) / name
+        if candidate.exists():
+            return str(candidate)
+    return name
+
+
 def command_for(engine: str, prompt: str,
                 model: str | None = None) -> list[str] | None:
     """The exact command line for one engine, or None when it cannot run.
@@ -50,15 +75,16 @@ def command_for(engine: str, prompt: str,
     nothing.
     """
     if engine == "claude":
-        return ["claude", "-p", prompt, "--output-format", "json"]
+        return [binary_for("claude"), "-p", prompt, "--output-format", "json"]
     if engine == "cursor":
-        command = ["cursor-agent", "-p", prompt, "--output-format", "json",
+        command = [binary_for("cursor-agent"), "-p", prompt,
+                   "--output-format", "json",
                    "--force"]
         if model:
             command += ["--model", model]
         return command
     if engine == "ollama":
-        return ["dsh", "--profile", "headless", prompt]
+        return [binary_for("dsh"), "--profile", "headless", prompt]
     return None
 
 
