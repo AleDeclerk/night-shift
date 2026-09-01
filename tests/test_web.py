@@ -596,3 +596,50 @@ def test_a_job_with_a_project_that_holds_no_graph_says_so(tmp_path):
     body = TestClient(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "no tiene grafo" in body.lower()
+
+
+def test_the_machine_room_lists_the_projects(tmp_path):
+    """A guessed scope is a guess. The room is where the user corrects it."""
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    projects.add(conn, "APH", "veritas")
+    projects.add(conn, "TrasCarton", "personal")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "APH" in room and "TrasCarton" in room
+
+
+def test_a_scope_can_be_corrected(tmp_path):
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    pid = projects.add(conn, "Maradona", "veritas")   # guessed wrong
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post(f"/projects/{pid}", data={"scope": "personal"},
+                follow_redirects=False)
+    row = conn.execute("SELECT scope FROM projects WHERE id=?", (pid,)).fetchone()
+    assert row["scope"] == "personal"
+
+
+def test_a_project_can_be_retired_without_losing_its_past(tmp_path):
+    """Deleting would erase the history of what it did. Retiring hides it."""
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    pid = projects.add(conn, "Viejo", "personal")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post(f"/projects/{pid}", data={"active": "0"}, follow_redirects=False)
+    assert conn.execute("SELECT count(*) FROM projects").fetchone()[0] == 1
+    assert [p["name"] for p in projects.all_projects(conn)] == []
+
+
+def test_an_unknown_scope_changes_nothing(tmp_path):
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    pid = projects.add(conn, "APH", "veritas")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=20.0))
+    client.post(f"/projects/{pid}", data={"scope": "nada"}, follow_redirects=False)
+    row = conn.execute("SELECT scope FROM projects WHERE id=?", (pid,)).fetchone()
+    assert row["scope"] == "veritas"

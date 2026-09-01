@@ -398,3 +398,17 @@ def test_a_due_template_fires_before_the_cycle_looks_at_the_queue(
         (template["id"],)).fetchone()[0]
     assert fired == 2  # the one add() made, plus the one fire_templates made
     assert seen == ["sprint review"]
+
+
+def test_the_cycle_looks_for_new_projects(tmp_path, monkeypatch):
+    """Reading directories costs milliseconds and no tokens, so the cycle can
+    do it on every run. A nightly task of its own would add a call to the
+    budget and a plist to maintain, for the same result."""
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    seen = []
+    monkeypatch.setattr(projects, "sync", lambda c, roots=None: seen.append(1) or 0)
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    assert seen, "the cycle never looked for projects"

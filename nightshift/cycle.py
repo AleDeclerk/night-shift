@@ -2,7 +2,7 @@
 import datetime as dt
 import sqlite3
 
-from nightshift import cascade, engines, jobs, life, mail, quota
+from nightshift import cascade, engines, jobs, life, mail, quota, projects
 
 
 def _start_run(conn, now, kind) -> int:
@@ -32,6 +32,13 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # Before the quota check, and free: firing a template writes a row, it
     # spends nothing, and a due job must sit in the queue by the time the
     # cycle below looks at it.
+    # Reading directories costs milliseconds and no tokens, so a new project
+    # appears on its own. A nightly task for this would add a call to the
+    # budget and a plist to maintain, for the same result.
+    try:
+        projects.sync(conn)
+    except OSError as exc:      # a missing folder must not stop the mail
+        life.record(conn, "projects_skipped", detail=str(exc)[:200], now=now)
     jobs.fire_templates(conn, now)
 
     # The window starts where the last good cycle started, so the system never

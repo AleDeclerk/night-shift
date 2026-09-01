@@ -440,6 +440,19 @@ dialog#room .role .fixed{font-family:"Oswald",sans-serif;font-size:.55rem;
 dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
   font-size:.76rem}
 @media (max-width:700px){dialog#room .roomassign .note{margin-left:0}}
+
+dialog#room .proj{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;
+  padding:.35rem 0;border-bottom:1px dotted var(--paper-dim)}
+dialog#room .proj:last-of-type{border-bottom:0}
+dialog#room .pname{font-family:"Oswald",sans-serif;font-size:.7rem;
+  letter-spacing:.1em;text-transform:uppercase;min-width:11rem}
+dialog#room .pgraph{font-size:.62rem;color:var(--ink-soft);min-width:5rem}
+dialog#room .proj button{font-family:"Oswald",sans-serif;font-weight:700;
+  font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--ink);color:var(--paper);border:2px solid var(--ink);
+  padding:.3rem .7rem;cursor:pointer}
+dialog#room .proj .retire{background:transparent;color:var(--stamp);
+  border-color:var(--stamp)}
 </style>
 </head>
 <body>
@@ -797,6 +810,29 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
         {% endfor %}
         </ul>
       </div>
+    </div>
+
+    <div class="roomassign">
+      <h3>Proyectos</h3>
+      <p class="note" style="margin:0 0 .8rem">
+        Salen solos de las carpetas con <code>wiki/</code>, <code>vault/</code> o
+        <code>graphify-out/</code>. El ámbito lo adivina el nombre una sola vez:
+        si lo corregís acá, no se vuelve a tocar.
+      </p>
+      {% for p in all_projects %}
+      <form class="proj" method="post" action="/projects/{{ p['id'] }}">
+        <span class="pname">{{ p['name'] }}</span>
+        <select name="scope">
+          <option value="personal" {% if p['scope'] == 'personal' %}selected{% endif %}>PERSONAL</option>
+          <option value="veritas" {% if p['scope'] == 'veritas' %}selected{% endif %}>VERITAS</option>
+        </select>
+        <span class="pgraph">{% if p['graph_path'] %}con grafo{% else %}sin grafo{% endif %}</span>
+        <button type="submit">Guardar</button>
+        <button type="submit" name="active" value="0" class="retire">Retirar</button>
+      </form>
+      {% else %}
+      <p class="note" style="margin:0">Todavía no se detectó ninguno.</p>
+      {% endfor %}
     </div>
   </div>
 </dialog>

@@ -100,3 +100,25 @@ def graph_for(conn: sqlite3.Connection, project_id: int) -> str | None:
     row = conn.execute("SELECT graph_path FROM projects WHERE id = ?",
                        (project_id,)).fetchone()
     return row["graph_path"] if row else None
+
+
+def edit(conn, project_id: int, *, scope: str | None = None,
+         name: str | None = None, active: bool | None = None) -> None:
+    """Correct what the guess got wrong.
+
+    A scope is guessed once from a name, and a name is a poor oracle. This is
+    where the user overrides it, and `sync` never touches a stored scope again.
+    An unknown scope changes nothing: a bad value must not silently move a
+    project to a place the user did not choose.
+    """
+    if scope is not None:
+        if scope not in SCOPES:
+            return
+        conn.execute("UPDATE projects SET scope=? WHERE id=?", (scope, project_id))
+    if name:
+        conn.execute("UPDATE projects SET name=? WHERE id=?", (name, project_id))
+    if active is not None:
+        # Retired, never deleted: the events of what it did stay readable.
+        conn.execute("UPDATE projects SET active=? WHERE id=?",
+                     (1 if active else 0, project_id))
+    conn.commit()

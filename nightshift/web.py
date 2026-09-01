@@ -124,6 +124,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "engines": engines_of(),
             "probes": backends.last_probes(conn),
             "job_engine": engines.get_engine(conn),
+            "all_projects": projects.all_projects(conn),
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
@@ -286,6 +287,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             engines.set_mail_engine(conn, name)
         except ValueError:
             pass          # an unknown name changes nothing
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/projects/{project_id}")
+    def edit_project(project_id: int, scope: str = Form(None),
+                     name: str = Form(None), active: str = Form(None)):
+        projects.edit(conn, project_id, scope=scope, name=name,
+                      active=None if active is None else active == "1")
         return RedirectResponse("/", status_code=303)
 
     return app
