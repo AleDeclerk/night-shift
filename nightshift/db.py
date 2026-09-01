@@ -47,7 +47,14 @@ CREATE TABLE IF NOT EXISTS projects (
   scope      TEXT NOT NULL,          -- personal | veritas
   vault_path TEXT,
   graph_path TEXT,
-  active     INTEGER NOT NULL DEFAULT 1
+  active     INTEGER NOT NULL DEFAULT 1,
+  merged_into INTEGER
+);
+CREATE TABLE IF NOT EXISTS project_paths (
+  id         INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  path       TEXT NOT NULL UNIQUE,
+  graph_path TEXT
 );
 CREATE TABLE IF NOT EXISTS probes (
   id       INTEGER PRIMARY KEY,
@@ -115,6 +122,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jobs ADD COLUMN template_id INTEGER")
     if "next_run" not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN next_run TEXT")
+
+    # Several folders, one project, 2026-09-01: `project_paths` is a
+    # brand-new table, so `CREATE TABLE IF NOT EXISTS` already makes it on
+    # an old database. Only the column added to the existing `projects`
+    # table needs a line here.
+    proj_cols = {r["name"] for r in conn.execute("PRAGMA table_info(projects)")}
+    if "merged_into" not in proj_cols:
+        conn.execute("ALTER TABLE projects ADD COLUMN merged_into INTEGER")
 
 
 def connect(path: pathlib.Path) -> sqlite3.Connection:

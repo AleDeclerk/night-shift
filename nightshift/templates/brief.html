@@ -446,6 +446,9 @@ dialog#room .proj{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;
 dialog#room .proj:last-of-type{border-bottom:0}
 dialog#room .pname{font-family:"Oswald",sans-serif;font-size:.7rem;
   letter-spacing:.1em;text-transform:uppercase;min-width:11rem}
+dialog#room .pfolders{display:block;font-family:"Courier Prime",monospace;
+  font-weight:400;font-size:.6rem;letter-spacing:0;text-transform:none;
+  color:var(--ink-soft)}
 dialog#room .pgraph{font-size:.62rem;color:var(--ink-soft);min-width:5rem}
 dialog#room .proj button{font-family:"Oswald",sans-serif;font-weight:700;
   font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;
@@ -821,7 +824,10 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
       </p>
       {% for p in all_projects %}
       <form class="proj" method="post" action="/projects/{{ p['id'] }}">
-        <span class="pname">{{ p['name'] }}</span>
+        <span class="pname">{{ p['name'] }}
+          {% set folders = path_counts.get(p['id'], 0) %}
+          {% if folders > 1 %}<span class="pfolders">{{ folders }} carpetas</span>{% endif %}
+        </span>
         <select name="scope">
           <option value="personal" {% if p['scope'] == 'personal' %}selected{% endif %}>PERSONAL</option>
           <option value="veritas" {% if p['scope'] == 'veritas' %}selected{% endif %}>VERITAS</option>
@@ -829,6 +835,16 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
         <span class="pgraph">{% if p['graph_path'] %}con grafo{% else %}sin grafo{% endif %}</span>
         <button type="submit">Guardar</button>
         <button type="submit" name="active" value="0" class="retire">Retirar</button>
+        {% if all_projects|length > 1 %}
+        <select name="into">
+          {% for other in all_projects %}
+          {% if other['id'] != p['id'] %}
+          <option value="{{ other['id'] }}">{{ other['name'] }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+        <button type="submit" formaction="/projects/{{ p['id'] }}/merge">Fusionar</button>
+        {% endif %}
       </form>
       {% else %}
       <p class="note" style="margin:0">Todavía no se detectó ninguno.</p>

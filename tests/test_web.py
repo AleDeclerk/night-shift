@@ -643,3 +643,50 @@ def test_an_unknown_scope_changes_nothing(tmp_path):
     client.post(f"/projects/{pid}", data={"scope": "nada"}, follow_redirects=False)
     row = conn.execute("SELECT scope FROM projects WHERE id=?", (pid,)).fetchone()
     assert row["scope"] == "veritas"
+
+
+def test_posting_a_merge_joins_two_projects(tmp_path):
+    """APH and BrailleAI are the same work, discovered under two names. The
+    room lets the user say so, and the page then shows one entry."""
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    keep_id = projects.add(conn, "aph-knowledge", "veritas")
+    absorb_id = projects.add(conn, "brailleai", "veritas")
+    conn.execute("INSERT INTO project_paths (project_id, path) VALUES (?,?)",
+                (keep_id, "/repos/aph-knowledge"))
+    conn.execute("INSERT INTO project_paths (project_id, path) VALUES (?,?)",
+                (absorb_id, "/repos/brailleai"))
+    conn.commit()
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+
+    r = client.post(f"/projects/{absorb_id}/merge", data={"into": str(keep_id)},
+                    follow_redirects=False)
+    assert r.status_code == 303
+
+    row = conn.execute("SELECT active, merged_into FROM projects WHERE id=?",
+                       (absorb_id,)).fetchone()
+    assert row["active"] == 0
+    assert row["merged_into"] == keep_id
+
+    body = client.get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert room.count("aph-knowledge") == 1
+    assert "brailleai" not in room
+    assert "2 carpetas" in room
+
+
+def test_merging_a_project_into_itself_changes_nothing(tmp_path):
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    pid = projects.add(conn, "solo", "personal")
+    client = TestClient(web.make_app(conn, engine_source=_engines,
+                                     ceiling_usd=5.0))
+
+    r = client.post(f"/projects/{pid}/merge", data={"into": str(pid)},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    row = conn.execute("SELECT active, merged_into FROM projects WHERE id=?",
+                       (pid,)).fetchone()
+    assert row["active"] == 1
+    assert row["merged_into"] is None

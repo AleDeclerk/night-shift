@@ -91,7 +91,11 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
         claude_reserve = cascade.reserve_for(now, cascade.LADDER[0].ceiling)
 
         jobs_queued = job_rows("queued", "running")
-        projects_by_id = {p["id"]: p for p in projects.all_projects(conn)}
+        all_projects_rows = projects.all_projects(conn)
+        projects_by_id = {p["id"]: p for p in all_projects_rows}
+        # A handful of projects at most: one query per row costs nothing here.
+        path_counts = {p["id"]: len(projects.paths_of(conn, p["id"]))
+                       for p in all_projects_rows}
 
         def job_knowledge(job):
             """What the graph of a job's project already knows about it.
@@ -124,13 +128,14 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "engines": engines_of(),
             "probes": backends.last_probes(conn),
             "job_engine": engines.get_engine(conn),
-            "all_projects": projects.all_projects(conn),
+            "all_projects": all_projects_rows,
+            "path_counts": path_counts,
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
             "ladder": ladder, "claude_ceiling": cascade.LADDER[0].ceiling,
             "claude_reserve": claude_reserve,
-            "projects": projects.all_projects(conn),
+            "projects": all_projects_rows,
             "schedules": jobs.SCHEDULES,
             "queued_knowledge": {j["id"]: job_knowledge(j) for j in jobs_queued}})
 
@@ -294,6 +299,18 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
                      name: str = Form(None), active: str = Form(None)):
         projects.edit(conn, project_id, scope=scope, name=name,
                       active=None if active is None else active == "1")
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/projects/{project_id}/merge")
+    def merge_project(project_id: int, into: str = Form(...)):
+        try:
+            target_id = int(into)
+        except ValueError:
+            return RedirectResponse("/", status_code=303)
+        try:
+            projects.merge(conn, target_id, project_id)
+        except ValueError:
+            pass          # merging a project into itself changes nothing
         return RedirectResponse("/", status_code=303)
 
     return app
