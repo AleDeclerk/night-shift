@@ -17,7 +17,7 @@ from nightshift import backends
 # "auto" walks the cascade of nightshift.cascade instead of naming one CLI.
 # It is not itself a command: command_for and engines.run never see it, since
 # a caller resolves it to a concrete engine first.
-JOB_ENGINES = ("auto", "claude", "cursor", "ollama")   # gemini cannot run
+JOB_ENGINES = ("auto", "claude", "cursor", "ollama")   # the Gemini CLI left
 MAIL_ENGINES = ("auto", "claude", "cursor", "ollama")
 DEFAULT_ENGINE = "claude"
 

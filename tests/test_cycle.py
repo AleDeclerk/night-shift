@@ -664,3 +664,23 @@ def test_the_cycle_leaves_the_standing_work_waiting_with_no_reading(
     row = conn.execute(
         "SELECT detail FROM events WHERE kind='template_skipped'").fetchone()
     assert row["detail"] == "no reading"
+
+
+def test_a_session_over_ninety_stops_the_fetch_and_records_why(tmp_path,
+                                                               monkeypatch):
+    """Acceptance criterion of section 7: a session at 100% fails every call,
+    and a failed call still costs. So the cycle waits and it says why."""
+    conn = db.connect(tmp_path / "s.db")
+    _store(conn, monkeypatch, usage.Usage(
+        week_pct=4, week_resets=dt.datetime(2026, 8, 29, 5, 59),
+        session_pct=95, session_resets=dt.datetime(2026, 8, 26, 8, 39)))
+    stub = Stub()
+
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=20.0, workspace=tmp_path)
+
+    assert stub.ran is False
+    row = _last_run(conn)
+    assert row["ok"] == 1            # the budget, not a failure
+    assert "session 95% used" in row["error"]
+    assert "08:39" in row["error"]

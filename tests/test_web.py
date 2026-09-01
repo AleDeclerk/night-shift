@@ -1150,7 +1150,7 @@ def test_the_room_shows_the_real_quota(tmp_path):
     """Week 4% used and seven days left: the reserve is 70 points and the
     allowance is 26."""
     conn = db.connect(tmp_path / "s.db")
-    _store_reading(conn, week_pct=4, session_pct=35)
+    reading = _store_reading(conn, week_pct=4, session_pct=35)
     body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     room = body.split('<dialog id="room">')[1]
@@ -1160,6 +1160,8 @@ def test_the_room_shows_the_real_quota(tmp_path):
     assert "70" in room          # the reserve those days hold back
     assert "26" in room          # the allowance
     assert "35%" in room         # the share of the session
+    # The reset moment, in the one format the whole page uses.
+    assert web._when(reading.week_resets.isoformat()) in room
 
 
 def test_the_room_says_when_it_has_no_fresh_reading(tmp_path):
