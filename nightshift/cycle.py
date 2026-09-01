@@ -59,6 +59,12 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
         runs.end(conn, run_id, True, error=room_reason, now=now)
         return
 
+    # The real quota, read once and kept. Rule 3 of the design puts it here:
+    # the mail decides first, on Claude, so the standing work never takes the
+    # room the mail needs. The call costs nothing and it comes before the
+    # triage, which is the first call of this cycle that spends.
+    quota.read_usage(conn, cwd=workspace, now=now)
+
     # There is no separate health check. It costs as much as the work that it
     # would protect, so the triage itself reports an authentication failure.
     result = mail_module.triage(runner_module, cwd=workspace, since=since)

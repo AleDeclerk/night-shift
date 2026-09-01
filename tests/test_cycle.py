@@ -1,8 +1,12 @@
 import datetime as dt
 
-from nightshift import cycle, db, life
+from nightshift import cycle, db, life, quota, usage
 
 NOW = dt.datetime(2026, 8, 26, 3, 0)
+READING = usage.Usage(week_pct=4,
+                      week_resets=dt.datetime(2026, 9, 2, 5, 59),
+                      session_pct=35,
+                      session_resets=dt.datetime(2026, 8, 26, 8, 39))
 
 
 class Stub:
@@ -557,3 +561,56 @@ def test_a_job_that_failed_is_charged_too(tmp_path):
                    ceiling_usd=45.0, workspace=tmp_path)
     assert jobs.get(conn, 1)["state"] == "failed"
     assert cascade.spent_by(conn, "claude", NOW) == 0.6
+
+
+# --- the real quota, read once and after the mail decision --------------
+
+def test_the_cycle_reads_the_real_quota_and_stores_it(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "s.db")
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: READING)
+    stub = Stub()
+
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=20.0, workspace=tmp_path)
+
+    assert quota.last_usage(conn, NOW) == READING
+
+
+def test_the_cycle_reads_the_quota_after_the_mail_keeps_its_place(
+        tmp_path, monkeypatch):
+    """Rule 3 of the design: the mail runs first and the allowance is read
+    after it, so the standing work never takes the room the mail needs."""
+    conn = db.connect(tmp_path / "s.db")
+    order = []
+    monkeypatch.setattr(quota.usage, "read",
+                        lambda **kw: order.append("usage") or READING)
+
+    class Watcher(Stub):
+        def triage(self, *a, **kw):
+            order.append("triage")
+            return super().triage(*a, **kw)
+
+    stub = Watcher()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=20.0, workspace=tmp_path)
+
+    assert order == ["usage", "triage"]
+
+
+def test_a_cycle_that_never_fetched_the_mail_asks_for_no_reading(tmp_path,
+                                                                 monkeypatch):
+    """A cycle stopped by the ceiling makes no paid call, so it needs no
+    reading either."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES (?, 'mail', 1, 9.0)", (NOW.isoformat(),))
+    conn.commit()
+    asked = []
+    monkeypatch.setattr(quota.usage, "read",
+                        lambda **kw: asked.append(1) or READING)
+    stub = Stub()
+
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=5.0, workspace=tmp_path)
+
+    assert asked == []

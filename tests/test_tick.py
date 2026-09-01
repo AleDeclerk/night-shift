@@ -3,10 +3,14 @@ import json
 
 import pytest
 
-from nightshift import db, jobs, quota, tick
+from nightshift import db, jobs, quota, tick, usage
 from nightshift.runner import RunResult
 
 NOW = dt.datetime(2026, 9, 1, 12, 0)
+READING = usage.Usage(week_pct=4,
+                      week_resets=dt.datetime(2026, 9, 8, 5, 59),
+                      session_pct=35,
+                      session_resets=dt.datetime(2026, 9, 1, 20, 39))
 
 
 class FakeRunner:
@@ -164,3 +168,24 @@ def test_a_tick_that_did_nothing_still_closes_its_run(tmp_path):
     assert row["kind"] == "tick"
     assert row["ok"] == 1
     assert row["cost_usd"] == 0.0
+
+
+def test_a_tick_reads_the_real_quota_and_stores_it(tmp_path, monkeypatch):
+    """A page load may not shell out, and one `/usage` call takes about three
+    seconds. The tick makes the call and the page reads what it left."""
+    conn = db.connect(tmp_path / "s.db")
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: READING)
+
+    tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path, now=NOW,
+             ceiling_usd=20.0)
+
+    assert quota.last_usage(conn, NOW) == READING
+
+
+def test_a_tick_records_that_the_cli_could_not_answer(tmp_path):
+    """The conftest answers None, the way a machine with no session does."""
+    conn = db.connect(tmp_path / "s.db")
+    tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path, now=NOW,
+             ceiling_usd=20.0)
+    assert len(_events(conn, "usage_unavailable")) == 1
+    assert quota.last_usage(conn, NOW) is None

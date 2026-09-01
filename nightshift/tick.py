@@ -25,6 +25,11 @@ def run(conn: sqlite3.Connection, *, runner_module, workspace,
     reason = ""
 
     try:
+        # The real quota, before anything that spends. The call costs
+        # nothing and it takes about three seconds, so the tick makes it and
+        # the page reads what it stored.
+        quota.read_usage(conn, cwd=workspace, now=now)
+
         # Free: reading directories costs no tokens, so the dropdown stays
         # fresh on every tick instead of waiting for the next mail cycle.
         projects.sync(conn)
