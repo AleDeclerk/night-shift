@@ -13,7 +13,23 @@ def _fake(answers):
 
 def test_every_engine_reports_a_row():
     names = {e.name for e in backends.check_all(runner=_fake({}))}
-    assert names == {"claude", "gemini", "cursor", "ollama"}
+    assert names == {"claude", "cursor", "ollama"}
+
+
+def test_the_gemini_cli_left_and_flash_stayed():
+    """Google closed the Gemini CLI to individual accounts on 2026-06-18, and
+    Antigravity ships no headless CLI, so the CLI is gone. Gemini Flash is a
+    model, not a CLI, and Cursor still reaches it: the `flash` step of the
+    ladder is untouched."""
+    from nightshift import cascade
+    names = {e.name for e in backends.check_all(runner=_fake({}))}
+    assert names == {"claude", "cursor", "ollama"}
+    assert "gemini" not in backends.PROBE_COMMANDS
+
+    flash = [s for s in cascade.LADDER if s.name == "flash"]
+    assert len(flash) == 1
+    assert flash[0].engine == "cursor"
+    assert "gemini" in flash[0].model      # the model, asked of cursor-agent
 
 
 def test_cursor_without_a_session_offers_sign_in():
@@ -32,13 +48,6 @@ def test_cursor_with_a_session_does_not_offer_sign_in():
     assert cursor.can_sign_in is False
 
 
-def test_gemini_sees_no_mail_without_an_mcp_server():
-    (gemini,) = [e for e in backends.check_all(
-        runner=_fake({"gemini mcp list": "No MCP servers configured."}))
-        if e.name == "gemini"]
-    assert gemini.sees_mail is False
-
-
 def test_claude_sees_the_mail_when_a_gmail_server_is_connected():
     (claude,) = [e for e in backends.check_all(
         runner=_fake({"claude mcp list": "claude.ai Gmail: https://x - Connected"}))
@@ -50,7 +59,7 @@ def test_an_engine_with_no_connector_may_not_do_the_mail_work():
     """This used to say that only Claude could, as a constant. A connector was
     added to Cursor on 2026-08-31, so the answer now follows the measurement."""
     engines = {e.name: e for e in backends.check_all(runner=_fake({}))}
-    for name in ("claude", "gemini", "cursor", "ollama"):
+    for name in ("claude", "cursor", "ollama"):
         assert engines[name].mail_capable is False, name
 
 
@@ -125,13 +134,6 @@ def test_cursor_without_a_connector_sees_no_mail():
         runner=_fake({"cursor-agent mcp list": "No MCP servers configured"}))
         if e.name == "cursor"]
     assert cursor.sees_mail is False
-
-
-def test_gemini_sees_the_mail_once_its_connector_is_connected():
-    (gemini,) = [e for e in backends.check_all(
-        runner=_fake({"gemini mcp list": "gmail: https://x (http) - Connected"}))
-        if e.name == "gemini"]
-    assert gemini.sees_mail is True
 
 
 def test_the_mail_work_needs_a_session_and_a_connector():

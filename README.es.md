@@ -64,10 +64,13 @@ Cada una tiene ahora su test.
 
 ## La sala de máquinas
 
-La página muestra cuatro motores y qué puede hacer cada uno: Claude, Gemini,
-Cursor y Ollama. Sólo Claude tiene conector de Gmail, así que el trabajo de
-correo se queda en él, y la página dice por qué. El panel mide con comandos
-locales baratos y responde `SE DESCONOCE` cuando no puede saber. Cursor tiene
+La página muestra tres motores y qué puede hacer cada uno: Claude, Cursor y
+Ollama. Sólo Claude tiene conector de Gmail, así que el trabajo de correo se
+queda en él, y la página dice por qué. Google le cerró la CLI de Gemini a las
+cuentas personales, así que esa CLI se fue del panel y de la cascada. Gemini
+Flash sigue disponible: Cursor le habla, como el escalón `flash` de la
+cascada. El panel mide con comandos locales baratos y responde `SE DESCONOCE`
+cuando no puede saber. Cursor tiene
 un flujo de ingreso que no abre ningún navegador por su cuenta, y el enlace de
 ingreso nunca entra a la base de datos ni a un log.
 

@@ -93,27 +93,6 @@ def _claude(runner) -> Engine:
                   can_work_mail=signed is not False)
 
 
-def _gemini(runner) -> Engine:
-    settings = pathlib.Path.home() / ".gemini" / "settings.json"
-    signed = None
-    if settings.exists():
-        try:
-            auth = json.loads(settings.read_text())
-            kind = auth.get("security", {}).get("auth", {}).get("selectedType")
-            signed = kind == "oauth-personal"
-        except (json.JSONDecodeError, OSError):
-            signed = None
-    mcp = _safe(["gemini", "mcp", "list"], runner) or ""
-    # A connector counts only when the server answers. `gemini mcp list` marks
-    # a live one as Connected.
-    mail = "gmail" in mcp.lower() and "connected" in mcp.lower()
-    return Engine("gemini", "Gemini", "Personal Google account",
-                  installed=bool(shutil.which("gemini")), signed_in=signed,
-                  sees_mail=mail, forced_schema=False,
-                  mail_capable=mail and signed is True, can_sign_in=False,
-                  can_work_mail=signed is True)
-
-
 def _cursor(runner, workspace=None) -> Engine:
     where = str(workspace or WORKSPACE)
     out = _safe(["cursor-agent", "status"], runner, cwd=where)
@@ -141,8 +120,11 @@ def _ollama(runner) -> Engine:
 
 
 def _fresh(runner, workspace=None) -> list[Engine]:
-    return [_claude(runner), _gemini(runner), _cursor(runner, workspace),
-            _ollama(runner)]
+    # The Gemini CLI left on 2026-09-01: Google closed it to individual
+    # accounts on 2026-06-18, and Antigravity ships no headless CLI. Gemini
+    # Flash is still reachable, through Cursor, as the `flash` step of the
+    # ladder.
+    return [_claude(runner), _cursor(runner, workspace), _ollama(runner)]
 
 
 def invalidate() -> None:
@@ -195,8 +177,6 @@ PROBE_COMMANDS = {
     # made the panel report that the only engine reading the mail could not.
     "claude": ["claude", "-p", PROBE_PROMPT, "--output-format", "json",
                "--allowedTools", mail.READ_TOOLS],
-    "gemini": ["gemini", "-p", PROBE_PROMPT, "-o", "json",
-               "--approval-mode", "yolo"],
     # --approve-mcps stays, and it is safe only because this command runs in
     # PROBE_DIR. The probe exists to learn whether the connector answers, and
     # today it answers no: Google refuses a client that it did not register.
@@ -299,9 +279,9 @@ def probe(engine: str, runner=None, workspace=None) -> ProbeResult:
 def _explain(text: str) -> str:
     """Give the line that explains the outcome, not the first 200 characters.
 
-    A real probe of Gemini filled the page with `YOLO mode is enabled` and a
-    keytar warning, while the reason sat six lines below. A person reading a
-    status page needs the cause.
+    A real probe of the Gemini CLI filled the page with `YOLO mode is
+    enabled` and a keytar warning, while the reason sat six lines below. A
+    person reading a status page needs the cause.
     """
     lines = [line.strip() for line in _scrub(text).splitlines() if line.strip()]
     # Two passes, in this order. A known cause beats any line that merely says

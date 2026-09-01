@@ -22,8 +22,6 @@ def _engines():
     return [
         backends.Engine("claude", "Claude", "Max subscription", True, True,
                         True, True, True, False),
-        backends.Engine("gemini", "Gemini", "Personal Google account", True,
-                        True, False, False, False, False),
         backends.Engine("cursor", "Cursor", "cursor-agent", True, False,
                         False, False, False, True),
         backends.Engine("ollama", "Ollama", "6 local models", True, True,
@@ -222,7 +220,7 @@ def test_a_cycle_that_started_long_ago_and_never_ended_is_dead(tmp_path):
 def test_the_machine_room_shows_every_engine(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0)).get("/").text
-    for label in ("Claude", "Gemini", "Cursor", "Ollama"):
+    for label in ("Claude", "Cursor", "Ollama"):
         assert label in body
 
 
@@ -386,7 +384,7 @@ def test_the_bar_shows_every_engine_at_a_glance(tmp_path):
     body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     bar = body.split('class="bar"')[1].split('class="panel')[0]
-    for label in ("Claude", "Gemini", "Cursor", "Ollama"):
+    for label in ("Claude", "Cursor", "Ollama"):
         assert label in bar, label
     assert "chip--off" in bar     # Cursor has no session in the fixture
 

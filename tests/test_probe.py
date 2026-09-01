@@ -18,8 +18,9 @@ def test_a_good_probe_reads_the_mail():
 
 
 def test_an_engine_that_cannot_run_fails_the_probe():
-    """Gemini claims a session and a connector, and it cannot make one call."""
-    r = backends.probe("gemini", runner=_answer(
+    """An engine can claim a session and a connector and still make no call.
+    The Gemini CLI taught this marker before it left the ladder."""
+    r = backends.probe("cursor", runner=_answer(
         "IneligibleTierError: This client is no longer supported"))
     assert r.ok is False
     assert r.can_mail is False
@@ -87,21 +88,22 @@ def test_the_local_engine_gets_its_placeholder_credential():
 
 
 def test_no_other_engine_gets_a_key():
-    for name in ("claude", "gemini", "cursor"):
+    for name in ("claude", "cursor"):
         assert backends.probe_env(name) == {}, name
 
 
 def test_the_detail_shows_the_cause_and_not_the_startup_noise():
-    """A real probe of Gemini on 2026-08-31 filled the page with `YOLO mode is
-    enabled` and a keytar warning, while the reason sat further down. The line
-    that explains the failure is the one worth 200 characters."""
+    """A real probe of the Gemini CLI on 2026-08-31 filled the page with
+    `YOLO mode is enabled` and a keytar warning, while the reason sat further
+    down. The line that explains the failure is the one worth 200
+    characters."""
     noisy = ("YOLO mode is enabled. All tool calls will be automatically "
              "approved.\nKeychain initialization encountered an error: Cannot "
              "find module keytar.node\nRequire stack:\n- /opt/homebrew/x\n"
              "Loaded cached credentials.\n"
              "Error authenticating: IneligibleTierError: This client is no "
              "longer supported for Gemini Code Assist for individuals.\n")
-    r = backends.probe("gemini", runner=_answer(noisy))
+    r = backends.probe("cursor", runner=_answer(noisy))
     assert r.ok is False
     assert "IneligibleTier" in r.detail
     assert "YOLO mode" not in r.detail

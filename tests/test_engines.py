@@ -17,7 +17,8 @@ def test_every_job_engine_has_a_command():
 
 
 def test_gemini_has_no_command():
-    """Gemini is out of service, and it never runs a job."""
+    """The Gemini CLI left the ladder on 2026-09-01, and it never ran a job
+    before that either."""
     assert engines.command_for("gemini", "hello") is None
 
 
@@ -161,7 +162,7 @@ def test_no_engine_ever_receives_a_paid_key():
     """Rule 1 of the specification: subscriptions only. An API key would move
     the cost from a flat monthly price to a metered bill."""
     from nightshift import backends
-    for name in ("claude", "cursor", "gemini"):
+    for name in ("claude", "cursor"):
         assert backends.probe_env(name) == {}, name
     # The local one gets a placeholder because the OpenAI-compatible client
     # refuses to start without a value. It buys nothing and it meters nothing.
