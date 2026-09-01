@@ -5,15 +5,20 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from nightshift import backends, db, web  # noqa: E402
+from nightshift import backends, db, projects, web  # noqa: E402
 
 HOME = pathlib.Path.home() / ".night-shift"
 CEILING_USD = 20.0
 
 if __name__ == "__main__":
     HOME.mkdir(exist_ok=True)
+    # Reading directories is free, so the page never waits for a cycle to
+    # show a project that already exists on disk.
     backends.warm_up()   # fill the cheap checks before the first request
     conn = db.connect(HOME / "state.db")
+    # Reading directories is free, so the page never waits for a cycle to
+    # show a project that already exists on disk.
+    projects.sync(conn)
     app = web.make_app(conn, CEILING_USD)
 
     import uvicorn
