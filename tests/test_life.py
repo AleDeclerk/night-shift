@@ -135,6 +135,19 @@ def test_false_alarm_rate_counts_only_no_era_nada_as_false(tmp_path):
     assert rate == {"raised": 3, "false": 1}
 
 
+def test_apply_verb_stamps_its_event_with_the_injected_clock(tmp_path):
+    """`record` fell back to the real clock here, so the cascade read
+    `events.at` with one clock while the caller worked with another."""
+    conn = db.connect(tmp_path / "s.db")
+    item_id = _item(conn)
+    when = dt.datetime(2026, 8, 26, 3, 0)
+    life.apply_verb(conn, item_id, "listo", now=when)
+    row = conn.execute(
+        "SELECT at FROM events WHERE item_id=? AND kind='item_closed'",
+        (item_id,)).fetchone()
+    assert row["at"].startswith("2026-08-26T03:00")
+
+
 def test_an_event_can_be_stamped_with_a_given_time(tmp_path):
     """The cycle takes a `now` and the cascade reads `events.at` to decide if
     there is room. If the record ignores that clock, the governor judges with

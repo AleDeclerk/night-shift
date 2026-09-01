@@ -31,8 +31,9 @@ def end(conn: sqlite3.Connection, run_id: int, ok: bool, cost: float = 0.0,
     The event is `cycle_ran` whatever the kind of the run, because the weekly
     board already reads that name and it means "a run ended".
     """
+    now = now or dt.datetime.now()
     conn.execute(
         "UPDATE runs SET finished_at=?, ok=?, cost_usd=?, error=? WHERE id=?",
-        (dt.datetime.now().isoformat(), 1 if ok else 0, cost, error, run_id))
+        (now.isoformat(), 1 if ok else 0, cost, error, run_id))
     conn.commit()
     life.record(conn, "cycle_ran", cost_usd=cost, detail=error, now=now)

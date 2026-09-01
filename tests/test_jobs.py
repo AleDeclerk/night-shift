@@ -1,3 +1,5 @@
+import datetime as dt
+
 import pytest
 
 from nightshift import db, engines, jobs
@@ -179,3 +181,25 @@ def test_a_queued_job_leaves_an_event(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     jobs.add(conn, "one")
     assert "job_queued" in [r[0] for r in conn.execute("SELECT kind FROM events")]
+
+
+def test_finish_stamps_its_event_with_the_injected_clock(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    when = dt.datetime(2026, 8, 26, 3, 0)
+    jobs.finish(conn, job_id, "/tmp/out", now=when)
+    row = conn.execute(
+        "SELECT at FROM events WHERE job_id=? AND kind='job_done'",
+        (job_id,)).fetchone()
+    assert row["at"].startswith("2026-08-26T03:00")
+
+
+def test_fail_stamps_its_event_with_the_injected_clock(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    job_id = jobs.add(conn, "one")
+    when = dt.datetime(2026, 8, 26, 3, 0)
+    jobs.fail(conn, job_id, "401 expired", now=when)
+    row = conn.execute(
+        "SELECT at FROM events WHERE job_id=? AND kind='job_failed'",
+        (job_id,)).fetchone()
+    assert row["at"].startswith("2026-08-26T03:00")

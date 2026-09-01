@@ -58,7 +58,8 @@ def apply_verb(conn: sqlite3.Connection, item_id: int, verb: str, *,
         "UPDATE items SET state=?, closed_at=?, snoozed_until=? WHERE id=?",
         (state, closed_at, snoozed_until, item_id))
     conn.commit()
-    record(conn, "item_closed", item_id=item_id, verb=verb, detail=reason)
+    record(conn, "item_closed", item_id=item_id, verb=verb, detail=reason,
+           now=now)
     return state
 
 

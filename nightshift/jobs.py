@@ -127,20 +127,23 @@ def stop_and_ask(conn: sqlite3.Connection, job_id: int, question: str) -> None:
     conn.commit()
 
 
-def finish(conn: sqlite3.Connection, job_id: int, result_path: str) -> None:
+def finish(conn: sqlite3.Connection, job_id: int, result_path: str, *,
+           now: dt.datetime | None = None) -> None:
     conn.execute("UPDATE jobs SET state='done', result_path=? WHERE id=?",
                  (result_path, job_id))
     conn.commit()
-    life.record(conn, "job_done", job_id=job_id, detail=result_path)
+    life.record(conn, "job_done", job_id=job_id, detail=result_path, now=now)
 
 
-def fail(conn: sqlite3.Connection, job_id: int, error: str) -> None:
+def fail(conn: sqlite3.Connection, job_id: int, error: str, *,
+         now: dt.datetime | None = None) -> None:
     """A failed job never goes back to 'queued': the scheduler would retry
     the same failure twice a day and burn the weekly quota on it."""
     conn.execute("UPDATE jobs SET state='failed', question=? WHERE id=?",
                  (error, job_id))
     conn.commit()
-    life.record(conn, "job_failed", job_id=job_id, detail=str(error)[:200])
+    life.record(conn, "job_failed", job_id=job_id, detail=str(error)[:200],
+               now=now)
 
 
 def answer(conn: sqlite3.Connection, job_id: int, text: str) -> None:
