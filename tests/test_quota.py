@@ -107,6 +107,24 @@ def test_a_stale_reading_is_no_reading(tmp_path, monkeypatch):
     assert quota.last_usage(conn, NOW + dt.timedelta(minutes=91)) is None
 
 
+def test_a_reading_of_a_week_that_ended_is_no_reading(tmp_path, monkeypatch):
+    """The reset moment ends the week that the reading describes.
+
+    A reading made minutes before the reset stays fresh for an hour and a
+    half after it. Past the reset `days_left` gives zero, zero empties the
+    reserve, and the allowance jumps to almost the whole week. So a reading
+    that outlives its week reads as room that the system does not have.
+    """
+    conn = db.connect(tmp_path / "s.db")
+    _answers(monkeypatch, READING)
+    quota.read_usage(conn, cwd=tmp_path,
+                     now=READING.week_resets - dt.timedelta(minutes=10))
+
+    after = READING.week_resets + dt.timedelta(minutes=31)
+
+    assert quota.last_usage(conn, after) is None
+
+
 def test_last_usage_gives_none_when_nothing_was_ever_read(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     assert quota.last_usage(conn, NOW) is None

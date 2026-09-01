@@ -126,4 +126,10 @@ def last_usage(conn: sqlite3.Connection, now: dt.datetime,
         return None      # a row this cannot read is a row that says nothing
     if now - at > dt.timedelta(minutes=max_age_minutes):
         return None
+    if now >= reading.week_resets:
+        # The week the reading describes has ended. Past the reset
+        # `days_left` gives zero, the reserve empties, and the allowance
+        # reads as almost the whole week. Counting is the honest answer
+        # until the next tick asks the CLI again.
+        return None
     return reading
