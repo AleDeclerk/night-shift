@@ -206,3 +206,36 @@ def test_no_command_of_the_work_approves_an_mcp_server():
             continue
         command = engines.command_for(name, "x") or []
         assert "--approve-mcps" not in command, name
+
+
+def test_a_warning_on_stderr_does_not_reach_the_answer(monkeypatch, tmp_path):
+    """The two streams were joined before the parse. One warning line in
+    front of the JSON killed the parse and lost the cost with it, and the
+    raw JSON plus the warning became the text that `mail.compose` returns,
+    which SAVE_PROMPT then saves in a Gmail draft as it stands.
+    """
+    def fake_run(command, **kw):
+        return subprocess.CompletedProcess(
+            command, 0,
+            stdout='{"result":"Hola Shannon","total_cost_usd":0.42}',
+            stderr="warning: config file is deprecated\n")
+
+    monkeypatch.setattr(engines.subprocess, "run", fake_run)
+    r = engines.run("hello", engine="cursor", cwd=tmp_path)
+    assert r.ok is True
+    assert r.cost_usd == 0.42
+    assert r.text == "Hola Shannon"
+    assert "warning" not in r.text
+
+
+def test_a_failure_on_stderr_alone_still_fails_the_run(monkeypatch, tmp_path):
+    """stdout stays the answer, and stderr stays the error message: an
+    engine that prints its refusal on stderr must not pass as a good run."""
+    def fake_run(command, **kw):
+        return subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="Error: not logged in\n")
+
+    monkeypatch.setattr(engines.subprocess, "run", fake_run)
+    r = engines.run("hello", engine="cursor", cwd=tmp_path)
+    assert r.ok is False
+    assert "not logged in" in r.error

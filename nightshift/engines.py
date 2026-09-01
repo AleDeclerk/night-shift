@@ -118,10 +118,23 @@ def run(prompt: str, *, engine: str, cwd, timeout: int = 900,
     except OSError as exc:
         return EngineRun(False, error=f"Cannot start {command[0]}: {exc}")
 
-    raw = (proc.stdout or "") + (proc.stderr or "")
-    text, cost = _read_answer(raw)
+    # The two streams stay apart, the same way the probe keeps them apart. A
+    # warning line in front of the JSON killed the parse and lost the cost
+    # with it, and the raw JSON plus the warning became the text that
+    # `mail.compose` returns, which SAVE_PROMPT saves in a Gmail draft as it
+    # stands. stdout carries the answer. stderr carries the error message.
+    text, cost = _read_answer(proc.stdout or "")
+    stderr = (proc.stderr or "").strip()
     if any(marker in text.lower() for marker in _FAILURE_MARKERS):
         return EngineRun(False, text=text, cost_usd=cost, error=text[:400])
+    if any(marker in stderr.lower() for marker in _FAILURE_MARKERS):
+        return EngineRun(False, text=text, cost_usd=cost, error=stderr[:400])
+    if not text.strip():
+        # An engine that answered nothing said why on stderr, or it said
+        # nothing at all. Both are a failure, and the reason is what stderr
+        # holds.
+        return EngineRun(False, cost_usd=cost,
+                         error=stderr[:400] or f"{engine} answered nothing.")
     return EngineRun(True, text=text, cost_usd=cost)
 
 
