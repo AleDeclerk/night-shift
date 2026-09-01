@@ -35,7 +35,19 @@ CREATE TABLE IF NOT EXISTS jobs (
   state       TEXT NOT NULL,
   question    TEXT,
   answer      TEXT,
-  result_path TEXT
+  result_path TEXT,
+  project_id  INTEGER,
+  schedule    TEXT NOT NULL DEFAULT 'once',
+  template_id INTEGER,
+  next_run    TEXT
+);
+CREATE TABLE IF NOT EXISTS projects (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  scope      TEXT NOT NULL,          -- personal | veritas
+  vault_path TEXT,
+  graph_path TEXT,
+  active     INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS probes (
   id       INTEGER PRIMARY KEY,
@@ -88,6 +100,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE items ADD COLUMN score INTEGER")
     if "comment" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN comment TEXT")
+
+    # Tasks and projects, 2026-09-01: a live jobs table predates the project
+    # and the schedule. `projects` itself is a brand-new table, so
+    # `CREATE TABLE IF NOT EXISTS` already makes it on an old database; only
+    # a column added to a table that already exists needs a line here.
+    job_cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+    if "project_id" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN project_id INTEGER")
+    if "schedule" not in job_cols:
+        conn.execute(
+            "ALTER TABLE jobs ADD COLUMN schedule TEXT NOT NULL DEFAULT 'once'")
+    if "template_id" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN template_id INTEGER")
+    if "next_run" not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN next_run TEXT")
 
 
 def connect(path: pathlib.Path) -> sqlite3.Connection:

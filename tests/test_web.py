@@ -505,3 +505,94 @@ def test_posting_an_invalid_score_changes_nothing(tmp_path):
     row = conn.execute("SELECT score FROM items WHERE id=?",
                        (item_id,)).fetchone()
     assert row["score"] is None
+
+
+# --- projects and schedules ----------------------------------------------
+
+def test_posting_a_job_with_a_project_stores_it(tmp_path):
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    project_id = projects.add(conn, "aph-knowledge", "veritas")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client.post("/jobs", data={"prompt": "Fix the pipeline",
+                               "project_id": str(project_id),
+                               "schedule": "once"},
+                follow_redirects=False)
+    row = conn.execute("SELECT * FROM jobs").fetchone()
+    assert row["project_id"] == project_id
+
+
+def test_the_form_shows_both_scopes(tmp_path):
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+    projects.add(conn, "veritas-project", "veritas")
+    projects.add(conn, "personal-project", "personal")
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "Personal" in body
+    assert "Veritas" in body
+    assert "veritas-project" in body
+    assert "personal-project" in body
+    assert "Nuevo proyecto" in body
+
+
+def test_posting_a_new_project_stores_it(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.post("/projects", data={"name": "side-project",
+                                       "scope": "personal"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    row = conn.execute("SELECT * FROM projects WHERE name='side-project'"
+                       ).fetchone()
+    assert row is not None
+    assert row["scope"] == "personal"
+
+
+def test_posting_a_new_project_with_an_unknown_scope_changes_nothing(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    r = client.post("/projects", data={"name": "side-project",
+                                       "scope": "nowhere"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert conn.execute("SELECT count(*) FROM projects").fetchone()[0] == 0
+
+
+def test_a_job_with_a_project_that_holds_a_graph_shows_its_concepts(
+        tmp_path, monkeypatch):
+    from nightshift import projects, web as web_module
+    conn = db.connect(tmp_path / "s.db")
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text("{}")
+    project_id = conn.execute(
+        "INSERT INTO projects (name, scope, graph_path) VALUES"
+        " ('aph-knowledge', 'veritas', ?)", (str(graph_path),)).lastrowid
+    conn.commit()
+    conn.execute(
+        "INSERT INTO jobs (created_at, prompt, state, project_id, schedule)"
+        " VALUES ('x','fix the transcription pipeline','queued',?,'once')",
+        (project_id,))
+    conn.commit()
+
+    monkeypatch.setattr(web_module.knowledge, "about",
+                        lambda *a, **kw: [{"label": "BrailleAI Pipeline",
+                                          "community": 1, "links": []}])
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "BrailleAI Pipeline" in body
+
+
+def test_a_job_with_a_project_that_holds_no_graph_says_so(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    project_id = conn.execute(
+        "INSERT INTO projects (name, scope) VALUES ('no-graph', 'personal')"
+    ).lastrowid
+    conn.commit()
+    conn.execute(
+        "INSERT INTO jobs (created_at, prompt, state, project_id, schedule)"
+        " VALUES ('x','do something','queued',?,'once')", (project_id,))
+    conn.commit()
+    body = TestClient(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=5.0)).get("/").text
+    assert "no tiene grafo" in body.lower()

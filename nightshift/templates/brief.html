@@ -294,10 +294,37 @@ body{padding:0;overflow:hidden}
 .a-order .assign label{font-family:"Oswald",sans-serif;font-size:.58rem;
   letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
 .a-order .note{margin-top:.35rem;text-align:left;font-size:.72rem}
-.a-order .queued{font-size:.74rem;padding:.15rem 0}
+.a-order .queued{font-size:.74rem;padding:.35rem .1rem;border-bottom:1px dotted var(--paper-dim)}
 .a-order button{font-family:"Oswald",sans-serif;font-weight:700;font-size:.6rem;
   letter-spacing:.18em;text-transform:uppercase;background:var(--ink);
   color:var(--paper);border:2px solid var(--ink);padding:.45rem 1rem;cursor:pointer}
+
+/* el pedido: ámbito, proyecto, texto y frecuencia, en ese orden (seccion 2) */
+.a-order select{font-family:"Courier Prime",monospace;font-size:.85rem;color:var(--ink);
+  background:var(--paper-bright);border:2px solid var(--ink);padding:.65rem .6rem}
+.scopepick{display:flex;gap:.35rem}
+.scopebtn{font-family:"Oswald",sans-serif;font-weight:700;font-size:.58rem;
+  letter-spacing:.16em;text-transform:uppercase;background:var(--paper);color:var(--ink);
+  border:2px solid var(--ink);padding:.5rem .8rem;cursor:pointer}
+.scopebtn.on{background:var(--ink);color:var(--paper)}
+.a-order .newproject{flex:1 1 100%;display:flex;gap:.6rem;align-items:center;
+  flex-wrap:wrap;margin:.6rem 0 0;padding-top:.6rem;border-top:1px dashed var(--ink-soft)}
+.a-order .newproject[hidden]{display:none}
+.a-order .newproject input[type="text"]{flex:1 1 14rem;font-family:"Courier Prime",monospace;
+  font-size:.85rem;background:var(--paper);border:2px solid var(--ink);
+  padding:.55rem .65rem;color:var(--ink)}
+.a-order .newproject input::placeholder{color:var(--ink-soft);font-style:italic}
+.queuelist{flex:1 1 100%;display:flex;flex-direction:column;margin-top:.4rem}
+.knowledge{margin:.3rem 0 .1rem;font-size:.7rem;color:var(--ink-soft)}
+.knowledge--empty{font-style:italic}
+.klabel{font-family:"Oswald",sans-serif;font-weight:700;font-size:.54rem;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink);margin-right:.4rem}
+.kconcept{display:inline-flex;align-items:center;gap:.35rem;background:var(--paper);
+  border:1px solid var(--ink-soft);padding:.18rem .5rem;margin:.15rem .3rem .15rem 0}
+.kadd{font-family:"Oswald",sans-serif;font-weight:700;font-size:.5rem;
+  letter-spacing:.1em;text-transform:uppercase;background:var(--ink);color:var(--paper);
+  border:1px solid var(--ink);padding:.12rem .4rem;cursor:pointer}
+.kadd:hover{background:var(--stamp);border-color:var(--stamp)}
 
 @media (max-width:900px){
   body{overflow:auto}
@@ -594,11 +621,62 @@ dialog#room .roomassign .note{margin:0 0 .9rem 13.6rem;text-align:left;
 </section>
 
 <div class="a-order">
-  <form class="order" method="post" action="/jobs">
-  <input name="prompt" placeholder="Agendar tareas">
-  <button type="submit">A la cola</button>
-</form>
-  <div style="flex:1 1 100%">{% for j in jobs_queued %}<div class="queued">En cola: {{ j["prompt"] }}</div>{% endfor %}</div>
+  <form class="order" method="post" action="/jobs" id="job-form">
+    <div class="scopepick" id="job-scope">
+      <button type="button" class="scopebtn on" data-scope="personal">Personal</button>
+      <button type="button" class="scopebtn" data-scope="veritas">Veritas</button>
+    </div>
+    <select name="project_id" id="project-select">
+      <option value="">Sin proyecto</option>
+      {% for p in projects %}
+      <option value="{{ p['id'] }}" data-scope="{{ p['scope'] }}">{{ p['name'] }}</option>
+      {% endfor %}
+      <option value="__new__">＋ Nuevo proyecto</option>
+    </select>
+    <input name="prompt" placeholder="Agendar tareas" required>
+    <select name="schedule">
+      {% for s in schedules %}
+      <option value="{{ s }}">{% if s == 'once' %}Una vez{% elif s == 'daily' %}Diario{% elif s == 'weekly' %}Semanal{% else %}Mensual{% endif %}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">A la cola</button>
+  </form>
+
+  <form class="newproject" id="new-project" method="post" action="/projects" hidden>
+    <input type="text" name="name" placeholder="Nombre del proyecto nuevo" required>
+    <div class="scopepick" id="new-project-scope-pick">
+      <button type="button" class="scopebtn on" data-newscope="personal">Personal</button>
+      <button type="button" class="scopebtn" data-newscope="veritas">Veritas</button>
+    </div>
+    <input type="hidden" name="scope" id="new-project-scope" value="personal">
+    <button type="submit">Guardar proyecto</button>
+  </form>
+
+  <div class="queuelist">
+  {% for j in jobs_queued %}
+  <div class="queued">
+    En cola: {{ j["prompt"] }}
+    {% set k = queued_knowledge.get(j['id']) %}
+    {% if k is not none %}
+      {% if not k.has_graph %}
+    <div class="knowledge knowledge--empty">{{ k.name }}: este proyecto no tiene grafo.</div>
+      {% elif k.hits %}
+    <div class="knowledge">
+      <span class="klabel">El grafo de {{ k.name }} conoce</span>
+      {% for hit in k.hits %}
+      <span class="kconcept">{{ hit.label }}
+        {% if hit.links %}({{ hit.links|length }}){% endif %}
+        <button type="button" class="kadd" data-add-concept="{{ hit.label }}">+ agregar</button>
+      </span>
+      {% endfor %}
+    </div>
+      {% else %}
+    <div class="knowledge knowledge--empty">{{ k.name }}: sin coincidencias en el grafo.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+  </div>
 </div>
 
 </div>
@@ -807,6 +885,63 @@ document.querySelectorAll(".lever[data-probe]").forEach(function (lever) {
       });
   });
 });
+
+// El pedido: el ámbito filtra la lista de proyectos, "＋ Nuevo proyecto"
+// destapa su propio formulario, y el botón de un concepto lo suma al texto
+// del encargo. Sección 2 y 5 del diseño, sin ninguna libreria.
+(function () {
+  var scopeButtons = document.querySelectorAll("#job-scope .scopebtn");
+  var projectSelect = document.getElementById("project-select");
+  var newProject = document.getElementById("new-project");
+
+  function applyScope(scope) {
+    scopeButtons.forEach(function (btn) {
+      btn.classList.toggle("on", btn.getAttribute("data-scope") === scope);
+    });
+    if (!projectSelect) { return; }
+    Array.prototype.forEach.call(projectSelect.options, function (opt) {
+      var optScope = opt.getAttribute("data-scope");
+      opt.hidden = !!optScope && optScope !== scope;
+    });
+    var chosen = projectSelect.options[projectSelect.selectedIndex];
+    if (chosen && chosen.hidden) { projectSelect.value = ""; }
+  }
+  scopeButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      applyScope(btn.getAttribute("data-scope"));
+    });
+  });
+  if (scopeButtons.length) { applyScope("personal"); }
+
+  if (projectSelect && newProject) {
+    projectSelect.addEventListener("change", function () {
+      newProject.hidden = projectSelect.value !== "__new__";
+    });
+  }
+
+  var newScopeButtons = document.querySelectorAll("#new-project-scope-pick .scopebtn");
+  var newScopeField = document.getElementById("new-project-scope");
+  newScopeButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      newScopeButtons.forEach(function (b) { b.classList.remove("on"); });
+      btn.classList.add("on");
+      if (newScopeField) { newScopeField.value = btn.getAttribute("data-newscope"); }
+    });
+  });
+
+  // Mostrar antes de usar (sección 5): el botón sólo agrega texto al
+  // encargo, nunca lo manda solo.
+  document.querySelectorAll(".kadd").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var input = document.querySelector("#job-form input[name='prompt']");
+      var concept = btn.getAttribute("data-add-concept");
+      if (input && concept) {
+        input.value = input.value ? input.value + ", " + concept : concept;
+        input.focus();
+      }
+    });
+  });
+})();
 </script>
 </body>
 </html>

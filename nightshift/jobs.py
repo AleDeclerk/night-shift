@@ -1,4 +1,5 @@
 """The job queue. Rule 4 of the spec: a stopped job stays stopped."""
+import calendar
 import datetime as dt
 import json
 import pathlib
@@ -7,6 +8,12 @@ import sqlite3
 from nightshift import life
 
 from nightshift import engines
+
+SCHEDULES = ("once", "daily", "weekly", "monthly")
+
+# A job outside these two states is still open: a template whose last job
+# is open gets skipped instead of piling a second, identical job on top.
+_CLOSED_JOB_STATES = ("done", "failed")
 
 SCHEMA = {
     "type": "object",
@@ -40,16 +47,53 @@ Set `finished` to true or false, as described above. Leave `question` empty
 unless `finished` is false."""
 
 
-def add(conn: sqlite3.Connection, prompt: str) -> int:
+def _spawn_job(conn: sqlite3.Connection, *, prompt: str,
+               project_id: int | None, template_id: int | None,
+               now: dt.datetime) -> int:
+    """One concrete row of work: it belongs to a project or not, and it
+    happens once, whether a person queued it by hand or a template's turn
+    made it."""
     cur = conn.execute(
-        "INSERT INTO jobs (created_at, prompt, state) VALUES (?,?,'queued')",
-        (dt.datetime.now().isoformat(), prompt))
+        "INSERT INTO jobs (created_at, prompt, state, project_id, schedule,"
+        " template_id) VALUES (?,?,'queued',?,'once',?)",
+        (now.isoformat(), prompt, project_id, template_id))
     conn.commit()
     job_id = cur.lastrowid
     # The weekly board reads events, never this table. A state change with no
     # event is work that the board reports as zero.
-    life.record(conn, "job_queued", job_id=job_id, detail=prompt[:200])
+    life.record(conn, "job_queued", job_id=job_id, detail=prompt[:200], now=now)
     return job_id
+
+
+def add(conn: sqlite3.Connection, prompt: str, *, project_id: int | None = None,
+        schedule: str = "once", now: dt.datetime | None = None) -> int:
+    """Queue a job. `once` is the old behaviour: one row, done for good.
+
+    Any other schedule makes a template (section 4 of the design) and, at
+    the same time, the first job it stands for. From then on
+    `jobs.fire_templates` makes the rest, one at a time, as each turn comes
+    due.
+    """
+    if schedule not in SCHEDULES:
+        raise ValueError(f"Unknown schedule: {schedule}")
+    now = now or dt.datetime.now()
+
+    if schedule == "once":
+        return _spawn_job(conn, prompt=prompt, project_id=project_id,
+                          template_id=None, now=now)
+
+    next_run = next_after(schedule, now)
+    cur = conn.execute(
+        "INSERT INTO jobs (created_at, prompt, state, project_id, schedule,"
+        " next_run) VALUES (?,?,'template',?,?,?)",
+        (now.isoformat(), prompt, project_id, schedule, next_run.isoformat()))
+    conn.commit()
+    template_id = cur.lastrowid
+    life.record(conn, "job_queued", job_id=template_id, detail=prompt[:200],
+               now=now)
+
+    return _spawn_job(conn, prompt=prompt, project_id=project_id,
+                      template_id=template_id, now=now)
 
 
 def get(conn: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
@@ -97,6 +141,72 @@ def retry(conn: sqlite3.Connection, job_id: int) -> None:
     person has to ask for this by hand."""
     conn.execute("UPDATE jobs SET state='queued' WHERE id=?", (job_id,))
     conn.commit()
+
+
+# --- schedules: a recurring task is a template, not a copy ---------------
+
+def next_after(schedule: str, now: dt.datetime) -> dt.datetime | None:
+    """The next moment a schedule falls due, counted from `now`.
+
+    `once` never recurs, so it has no next moment: this gives None instead
+    of a made-up date that nothing would ever read.
+    """
+    if schedule == "once":
+        return None
+    if schedule == "daily":
+        return now + dt.timedelta(days=1)
+    if schedule == "weekly":
+        return now + dt.timedelta(weeks=1)
+    if schedule == "monthly":
+        month = now.month % 12 + 1
+        year = now.year + (now.month // 12)
+        # 31 January has no 31 February: land on the last day the target
+        # month has instead of overflowing into the month after it.
+        day = min(now.day, calendar.monthrange(year, month)[1])
+        return now.replace(year=year, month=month, day=day)
+    raise ValueError(f"Unknown schedule: {schedule}")
+
+
+def due_templates(conn: sqlite3.Connection, now: dt.datetime) -> list[sqlite3.Row]:
+    """The templates whose turn has arrived."""
+    return conn.execute(
+        "SELECT * FROM jobs WHERE state='template' AND next_run <= ?"
+        " ORDER BY id", (now.isoformat(),)).fetchall()
+
+
+def fire_templates(conn: sqlite3.Connection, now: dt.datetime) -> dict:
+    """Give every due template its turn.
+
+    A turn whose previous job is still open is skipped, and the card says
+    so (section 4 of the design): piling identical jobs is how a queue
+    fills with rubbish nobody reads. Firing or skipping, the template's
+    `next_run` always moves forward, and an event is always written (rule 2
+    of the design): a silent skip is a task that seems to run and does not.
+    """
+    made, skipped = 0, 0
+    for template in due_templates(conn, now):
+        template_id = template["id"]
+        last_job = conn.execute(
+            "SELECT state FROM jobs WHERE template_id=? ORDER BY id DESC"
+            " LIMIT 1", (template_id,)).fetchone()
+        if last_job is not None and last_job["state"] not in _CLOSED_JOB_STATES:
+            life.record(conn, "template_skipped", job_id=template_id,
+                       detail=f"the last job is still {last_job['state']}",
+                       now=now)
+            skipped += 1
+        else:
+            _spawn_job(conn, prompt=template["prompt"],
+                      project_id=template["project_id"],
+                      template_id=template_id, now=now)
+            life.record(conn, "template_fired", job_id=template_id,
+                       detail=template["prompt"][:200], now=now)
+            made += 1
+
+        next_run = next_after(template["schedule"], now)
+        conn.execute("UPDATE jobs SET next_run=? WHERE id=?",
+                     (next_run.isoformat() if next_run else None, template_id))
+        conn.commit()
+    return {"made": made, "skipped": skipped}
 
 
 def run_next(conn, runner_module, workspace,

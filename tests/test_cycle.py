@@ -365,3 +365,36 @@ def test_a_cycle_that_fails_still_writes_one_cycle_ran_event(tmp_path):
     ran = conn.execute(
         "SELECT * FROM events WHERE kind='cycle_ran'").fetchall()
     assert len(ran) == 1
+
+
+def test_a_due_template_fires_before_the_cycle_looks_at_the_queue(
+        tmp_path, monkeypatch):
+    """`fire_templates` runs before the quota check, so a due job already
+    sits in the queue by the time the cycle picks the next one."""
+    from nightshift import jobs
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub()
+    earlier = NOW - dt.timedelta(days=8)
+    jobs.add(conn, "sprint review", schedule="weekly", now=earlier)
+    # The job add() made for the first turn is already done, so this turn
+    # is free to fire instead of being skipped.
+    jobs.finish(conn, jobs.next_queued(conn)["id"], "/tmp/out")
+
+    seen = []
+
+    def fake_run_next(conn_arg, runner_module, workspace, engine=None):
+        row = jobs.next_queued(conn_arg)
+        seen.append(row["prompt"] if row else None)
+        return 0.0
+
+    monkeypatch.setattr(cycle.jobs, "run_next", fake_run_next)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=5.0, workspace=tmp_path)
+
+    template = conn.execute(
+        "SELECT * FROM jobs WHERE state='template'").fetchone()
+    fired = conn.execute(
+        "SELECT count(*) FROM jobs WHERE template_id=?",
+        (template["id"],)).fetchone()[0]
+    assert fired == 2  # the one add() made, plus the one fire_templates made
+    assert seen == ["sprint review"]

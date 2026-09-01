@@ -29,6 +29,11 @@ def _end_run(conn, run_id, ok, cost=0.0, error=None, now=None) -> None:
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
              now: dt.datetime, ceiling_usd: float, workspace,
              mail_engine: str = "claude") -> None:
+    # Before the quota check, and free: firing a template writes a row, it
+    # spends nothing, and a due job must sit in the queue by the time the
+    # cycle below looks at it.
+    jobs.fire_templates(conn, now)
+
     # The window starts where the last good cycle started, so the system never
     # pays twice to classify the same mail, and a gap of days widens it alone.
     previous = conn.execute(

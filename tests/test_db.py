@@ -60,3 +60,31 @@ def test_connect_makes_the_events_table(tmp_path):
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
     assert "events" in names
+
+
+def test_connect_makes_the_projects_table(tmp_path):
+    conn = db.connect(tmp_path / "state.db")
+    names = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "projects" in names
+
+
+def test_connect_adds_the_schedule_columns_to_an_old_jobs_table(tmp_path):
+    """Tasks and projects, 2026-09-01: a live database predates
+    `project_id`, `schedule`, `template_id` and `next_run` on `jobs`.
+    Without this the next scheduled cycle crashes at 06:30."""
+    import sqlite3
+    path = tmp_path / "state.db"
+    old = sqlite3.connect(path)
+    old.execute("""CREATE TABLE jobs (
+        id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, prompt TEXT NOT NULL,
+        state TEXT NOT NULL, question TEXT, answer TEXT, result_path TEXT)""")
+    old.commit()
+    old.close()
+
+    conn = db.connect(path)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+    assert {"project_id", "schedule", "template_id", "next_run"} <= cols
+    conn.execute("INSERT INTO jobs (created_at, prompt, state)"
+                 " VALUES ('x', 'p', 'queued')")
+    assert conn.execute("SELECT schedule FROM jobs").fetchone()[0] == "once"

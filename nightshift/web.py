@@ -8,8 +8,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from nightshift import (backends, board, cascade, engines, jobs, life, mail,
-                        quota, runner, signin)
+from nightshift import (backends, board, cascade, engines, jobs, knowledge,
+                        life, mail, projects, quota, runner, signin)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -89,6 +89,28 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "ok": cascade.has_room(conn, step, now)[0],
         } for step in cascade.LADDER]
         claude_reserve = cascade.reserve_for(now, cascade.LADDER[0].ceiling)
+
+        jobs_queued = job_rows("queued", "running")
+        projects_by_id = {p["id"]: p for p in projects.all_projects(conn)}
+
+        def job_knowledge(job):
+            """What the graph of a job's project already knows about it.
+            Section 5 of the design: read only, and shown before it is used.
+            A job with no project, or a project with no graph, still runs;
+            this just says so instead of guessing."""
+            project_id = job["project_id"]
+            if not project_id:
+                return None
+            project = projects_by_id.get(project_id)
+            if project is None:
+                return None
+            graph_path = project["graph_path"]
+            if not graph_path:
+                return {"has_graph": False, "hits": [], "name": project["name"]}
+            return {"has_graph": True,
+                    "hits": knowledge.about(graph_path, job["prompt"]),
+                    "name": project["name"]}
+
         return TEMPLATES.TemplateResponse(request, "brief.html", {
             "needs_you": life.open_items(conn),
             "done": life.closed_items(conn),
@@ -97,7 +119,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "last_good": _when(good["started_at"]) if good else "never",
             "spent": round(spent, 2), "ceiling": ceiling_usd,
             "jobs_waiting": job_rows("needs_you", "failed"),
-            "jobs_queued": job_rows("queued", "running"),
+            "jobs_queued": jobs_queued,
             "jobs_done": job_rows("done"),
             "engines": engines_of(),
             "probes": backends.last_probes(conn),
@@ -106,7 +128,10 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
             "ladder": ladder, "claude_ceiling": cascade.LADDER[0].ceiling,
-            "claude_reserve": claude_reserve})
+            "claude_reserve": claude_reserve,
+            "projects": projects.all_projects(conn),
+            "schedules": jobs.SCHEDULES,
+            "queued_knowledge": {j["id"]: job_knowledge(j) for j in jobs_queued}})
 
     @app.get("/semana")
     def week_page(request: Request):
@@ -117,8 +142,22 @@ def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
             "week": board.week(conn), "by_day": board.by_day(conn)})
 
     @app.post("/jobs")
-    def add_job(prompt: str = Form(...)):
-        jobs.add(conn, prompt)
+    def add_job(prompt: str = Form(...), project_id: str = Form(""),
+                schedule: str = Form("once")):
+        try:
+            jobs.add(conn, prompt,
+                    project_id=int(project_id) if project_id else None,
+                    schedule=schedule)
+        except ValueError:
+            pass          # an unknown schedule changes nothing
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/projects")
+    def add_project(name: str = Form(...), scope: str = Form(...)):
+        try:
+            projects.add(conn, name, scope)
+        except ValueError:
+            pass          # an unknown scope changes nothing
         return RedirectResponse("/", status_code=303)
 
     @app.get("/open/{item_id}")
