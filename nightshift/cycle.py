@@ -9,6 +9,25 @@ from nightshift import (cascade, drafts, engines, jobs, life, projects,
 def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
              now: dt.datetime, ceiling_usd: float, workspace,
              mail_engine: str = "claude") -> None:
+    # The window starts where the last good cycle started, so the system never
+    # pays twice to classify the same mail, and a gap of days widens it alone.
+    # `kind = 'mail'` matters: the tick also writes a run, once an hour, and
+    # without this the window would start at the last tick and hide every
+    # message older than one hour. Read before runs.start below: the row that
+    # call inserts has no `ok` yet, so it would not match anyway, but the
+    # query means "the last run before this one" and reads clearest here.
+    previous = conn.execute(
+        "SELECT started_at FROM runs WHERE ok = 1 AND kind = 'mail'"
+        " ORDER BY id DESC LIMIT 1").fetchone()
+    since = previous["started_at"] if previous else None
+
+    # The run opens before anything that can fail: projects.sync reads the
+    # disk and fire_templates writes to the jobs table, and a crash in
+    # either used to happen before any row existed. The page then read the
+    # last good run, from yesterday, as today's state: a quiet day that hid
+    # a crash.
+    run_id = runs.start(conn, now, "mail")
+
     # Before the quota check, and free: firing a template writes a row, it
     # spends nothing, and a due job must sit in the queue by the time the
     # cycle below looks at it.
@@ -16,22 +35,15 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # appears on its own. A nightly task for this would add a call to the
     # budget and a plist to maintain, for the same result.
     try:
-        projects.sync(conn)
-    except OSError as exc:      # a missing folder must not stop the mail
-        life.record(conn, "projects_skipped", detail=str(exc)[:200], now=now)
-    jobs.fire_templates(conn, now)
-
-    # The window starts where the last good cycle started, so the system never
-    # pays twice to classify the same mail, and a gap of days widens it alone.
-    # `kind = 'mail'` matters: the tick also writes a run, once an hour, and
-    # without this the window would start at the last tick and hide every
-    # message older than one hour.
-    previous = conn.execute(
-        "SELECT started_at FROM runs WHERE ok = 1 AND kind = 'mail'"
-        " ORDER BY id DESC LIMIT 1").fetchone()
-    since = previous["started_at"] if previous else None
-
-    run_id = runs.start(conn, now, "mail")
+        try:
+            projects.sync(conn)
+        except OSError as exc:  # a missing folder must not stop the mail
+            life.record(conn, "projects_skipped", detail=str(exc)[:200], now=now)
+        jobs.fire_templates(conn, now)
+    except Exception as exc:  # noqa: BLE001
+        runs.end(conn, run_id, False, error=f"projects/templates: {exc}"[:400],
+                 now=now)
+        return
 
     decision = quota.may_run(conn, now=now, ceiling_usd=ceiling_usd)
     if not decision.allowed:

@@ -429,6 +429,46 @@ def test_the_cycle_looks_for_new_projects(tmp_path, monkeypatch):
     assert seen, "the cycle never looked for projects"
 
 
+def test_a_crash_in_projects_sync_still_leaves_a_run_row(tmp_path, monkeypatch):
+    """projects.sync and fire_templates used to run before runs.start. A
+    crash there, other than the OSError the cycle already expects, left no
+    row behind, and the page went on showing yesterday as the last state: a
+    quiet day that hid a crash."""
+    from nightshift import projects
+    conn = db.connect(tmp_path / "s.db")
+
+    def boom(conn_arg, roots=None):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(projects, "sync", boom)
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+
+    row = _last_run(conn)
+    assert row is not None
+    assert row["ok"] == 0
+    assert "the disk went away" in row["error"]
+    assert stub.ran is False   # the cycle never reached the fetch
+
+
+def test_a_crash_in_fire_templates_still_leaves_a_run_row(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "s.db")
+
+    def boom(conn_arg, now_arg):
+        raise RuntimeError("bad template row")
+
+    monkeypatch.setattr(cycle.jobs, "fire_templates", boom)
+    stub = Stub()
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+
+    row = _last_run(conn)
+    assert row is not None
+    assert row["ok"] == 0
+    assert "bad template row" in row["error"]
+
+
 # --- what the cascade is charged ------------------------------------------
 
 def test_the_triage_is_charged_to_claude(tmp_path):
