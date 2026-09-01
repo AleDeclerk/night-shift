@@ -1,4 +1,6 @@
 # tests/test_web.py
+import datetime as dt
+
 from fastapi.testclient import TestClient
 
 from nightshift import backends, db, web
@@ -848,3 +850,58 @@ def test_a_tick_does_not_hide_what_the_mail_cycle_did(tmp_path):
     assert "401" in body        # the error of the mail cycle still shows
     assert "30 Aug" in body     # and the last good cycle is the mail one
     assert "01 Sep" not in body
+
+
+# --- the price of a probe -------------------------------------------------
+
+def test_a_probe_lands_where_both_governors_read(tmp_path, monkeypatch):
+    """A probe costs 0.17 to 0.34 USD of the same quota. `save_probe` wrote
+    only the `probes` table, which neither governor reads, so the machine
+    room could spend a week of quota one button at a time."""
+    from nightshift import backends as backends_module
+    from nightshift import cascade, quota
+
+    conn = db.connect(tmp_path / "s.db")
+
+    def fake_probe(name, runner=None, workspace=None):
+        return backends.ProbeResult(name, True, True, 0.34, "MAIL-OK")
+
+    monkeypatch.setattr(backends_module, "probe", fake_probe)
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=20.0))
+    answer = client.post("/machines/claude/probe").json()
+    assert answer["cost_usd"] == 0.34
+
+    now = dt.datetime.now()
+    assert quota.spent_this_week(conn, now) == 0.34
+    assert cascade.spent_by(conn, "claude", now) == 0.34
+
+    row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["kind"] == "probe"
+    assert row["cost_usd"] == 0.34
+    assert row["ok"] == 1
+
+    event = conn.execute(
+        "SELECT * FROM events WHERE kind='probe_ran'").fetchone()
+    assert event["engine"] == "claude"
+    assert event["cost_usd"] == 0.34
+
+
+def test_a_failed_probe_still_records_what_it_spent(tmp_path, monkeypatch):
+    from nightshift import backends as backends_module
+    from nightshift import quota
+
+    conn = db.connect(tmp_path / "s.db")
+
+    def fake_probe(name, runner=None, workspace=None):
+        return backends.ProbeResult(name, False, False, 0.21, "not logged in")
+
+    monkeypatch.setattr(backends_module, "probe", fake_probe)
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=20.0))
+    client.post("/machines/cursor/probe")
+
+    assert quota.spent_this_week(conn, dt.datetime.now()) == 0.21
+    row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["kind"] == "probe"
+    assert row["ok"] == 0

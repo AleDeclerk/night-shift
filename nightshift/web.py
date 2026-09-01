@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from nightshift import (backends, board, cascade, engines, jobs, knowledge,
-                        life, mail, projects, quota, runner, signin, tick)
+                        life, mail, projects, quota, runner, runs, signin,
+                        tick)
 
 TEMPLATES = Jinja2Templates(
     directory=str(pathlib.Path(__file__).parent / "templates"))
@@ -330,8 +331,21 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
 
     @app.post("/machines/{name}/probe")
     def probe_engine(name: str):
+        # A probe is a real call, and it costs 0.17 to 0.34 USD of the same
+        # weekly quota. `save_probe` writes the `probes` table, which neither
+        # governor reads, so the price has to land in both of the places that
+        # they do read: a run for `quota`, an event with an engine for the
+        # cascade. Without them the machine room could spend a whole week of
+        # quota one button at a time.
+        now = dt.datetime.now()
+        run_id = runs.start(conn, now, "probe")
         result = backends.probe(name)
         backends.save_probe(conn, result)
+        life.record(conn, "probe_ran", engine=name,
+                    cost_usd=result.cost_usd, detail=result.detail[:120],
+                    now=now)
+        runs.end(conn, run_id, result.ok, cost=result.cost_usd,
+                 error=None if result.ok else result.detail[:400], now=now)
         backends.invalidate()
         return {"ok": result.ok, "can_mail": result.can_mail,
                 "cost_usd": result.cost_usd, "detail": result.detail}
