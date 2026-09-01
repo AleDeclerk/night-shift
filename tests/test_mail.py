@@ -300,6 +300,24 @@ def test_a_text_with_no_greeting_survives_whole():
     assert mail.strip_preamble(body) == body
 
 
+def test_a_preamble_with_no_greeting_word_is_still_dropped():
+    """The reply itself can open with a name instead of a greeting word, so
+    the old rule found nothing to cut to and left the narration in place."""
+    noisy = "Here is the draft:\n\nShannon,\n\nThanks for the update."
+    clean = mail.strip_preamble(noisy)
+    assert clean.startswith("Shannon,")
+    assert "Here is the draft" not in clean
+
+
+def test_a_preamble_that_itself_starts_with_a_greeting_word_is_dropped():
+    """`hola` is a greeting word, and the narration used it too, so the old
+    rule matched the narration block itself and cut nothing at all."""
+    noisy = "Hola, te dejo el borrador:\n\nEstimada Ana, gracias por tu mensaje."
+    clean = mail.strip_preamble(noisy)
+    assert clean.startswith("Estimada Ana,")
+    assert "te dejo el borrador" not in clean
+
+
 def test_compose_returns_the_reply_without_the_preamble():
     class Fake:
         def run(self, prompt, **kw):

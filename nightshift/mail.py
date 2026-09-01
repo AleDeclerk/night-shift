@@ -216,18 +216,32 @@ GREETINGS = ("hi ", "hi,", "hello", "hey ", "dear ", "hola", "buenos ",
              "buenas ", "estimad", "querid", "buen día")
 
 
+def _is_narration(block: str) -> bool:
+    """One line that ends with a colon is an engine announcing the reply,
+    not opening it: "Here is the draft:", "Hola, te dejo el borrador:". The
+    greeting rule alone misses this when the reply itself opens with a name
+    instead of a greeting word, or when the narration happens to use a
+    greeting word too."""
+    block = block.strip()
+    return bool(block) and "\n" not in block and block.endswith(":")
+
+
 def strip_preamble(text: str) -> str:
     """Drop whatever an engine wrote before the reply itself.
 
-    It cuts only when it finds a greeting to cut to. A reply that opens with
-    no greeting is left whole: guessing there would throw away the answer.
+    First, a narration block: one line, ending in a colon. Then the greeting
+    rule, on what remains: it cuts only when it finds a greeting to cut to. A
+    reply that opens with no greeting and no narration is left whole,
+    because guessing further would throw away the answer.
     """
     blocks = text.strip().split("\n\n")
+    if blocks and _is_narration(blocks[0]):
+        blocks = blocks[1:]
     for index, block in enumerate(blocks):
         first = block.strip().lower()
         if any(first.startswith(word) for word in GREETINGS):
             return "\n\n".join(blocks[index:]).strip()
-    return text.strip()
+    return "\n\n".join(blocks).strip()
 
 
 def compose(item: "Item", *, engine: str, cwd, model: str | None = None):
