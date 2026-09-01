@@ -279,25 +279,30 @@ def run_next(conn, runner_module, workspace,
 
     prompt = PROMPT.format(job=job["prompt"], workdir=workdir)
 
+    data, error = None, None
     if engine == "claude":
         r = runner_module.run(prompt, cwd=workdir, schema=SCHEMA)
-        if not r.ok:
-            fail(conn, job_id, r.error)
-            return r.cost_usd
-        try:
-            data = json.loads(r.text)
-        except json.JSONDecodeError:
-            fail(conn, job_id,
-                 r.error or f"The answer was not JSON: {r.text[:200]}")
-            return r.cost_usd
-        cost = r.cost_usd
+        cost, error = r.cost_usd, r.error
+        if r.ok:
+            try:
+                data = json.loads(r.text)
+            except json.JSONDecodeError:
+                error = r.error or f"The answer was not JSON: {r.text[:200]}"
     else:
         er = engines.run(prompt + JSON_SHAPE_HINT, engine=engine, cwd=workdir)
-        if not er.ok:
-            fail(conn, job_id, er.error)
-            return er.cost_usd
-        data = engines.parse_job_answer(er.text)
-        cost = er.cost_usd
+        cost, error = er.cost_usd, er.error
+        if er.ok:
+            data = engines.parse_job_answer(er.text)
+
+    # `cascade.spent_by` reads the events that name an engine. This function
+    # gave back a cost and wrote no such event, so a job that ran on Cursor
+    # moved no step of the ladder. A job that failed spent all the same.
+    life.record(conn, "job_ran", job_id=job_id, engine=engine, cost_usd=cost,
+                detail=(error or "")[:200] or None)
+
+    if data is None:
+        fail(conn, job_id, error)
+        return cost
 
     if not data.get("finished"):
         question = data.get("question") or \

@@ -253,11 +253,28 @@ def compose(item: "Item", *, engine: str, cwd, model: str | None = None):
     return dataclasses.replace(run, text=strip_preamble(run.text))
 
 
-def reply_cost_and_trace(mail_module, runner_module, item: "Item", *,
-                         engine: str, cwd,
-                         model: str | None = None) -> tuple[float, bool, str]:
-    """Write one reply, on whichever engine is asked, and give back what it
-    cost and whether it worked.
+@dataclasses.dataclass(frozen=True)
+class Reply:
+    """One reply, and what each engine spent on it.
+
+    The charges stay apart, one for each call. The compose runs on whichever
+    engine the ladder chose, and the save always runs on Claude, because only
+    Claude holds the connector. Summed under the compose engine, as they used
+    to be, the cascade read Claude as cheaper than it is and gave it work it
+    had no room for.
+    """
+    ok: bool
+    note: str
+    charges: tuple[tuple[str, float], ...] = ()
+
+    @property
+    def cost_usd(self) -> float:
+        return sum(cost for _engine, cost in self.charges)
+
+
+def reply(mail_module, runner_module, item: "Item", *, engine: str, cwd,
+          model: str | None = None) -> Reply:
+    """Write one reply, on whichever engine is asked.
 
     Claude composes and saves in one call: it is the only engine that
     reaches Gmail. Any other engine only writes the text, and Claude still
@@ -269,13 +286,14 @@ def reply_cost_and_trace(mail_module, runner_module, item: "Item", *,
     """
     if engine == "claude":
         draft = mail_module.write_draft(runner_module, item, cwd=cwd)
-        return draft.cost_usd, draft.ok, draft.note
+        return Reply(draft.ok, draft.note, (("claude", draft.cost_usd),))
     composed = mail_module.compose(item, engine=engine, cwd=cwd, model=model)
     if not composed.ok:
-        return (composed.cost_usd, False,
-                f"The compose call failed: {composed.error}")
+        return Reply(False, f"The compose call failed: {composed.error}",
+                     ((engine, composed.cost_usd),))
     draft = mail_module.save_draft(runner_module, item, composed.text, cwd=cwd)
-    return composed.cost_usd + draft.cost_usd, draft.ok, draft.note
+    return Reply(draft.ok, draft.note,
+                 ((engine, composed.cost_usd), ("claude", draft.cost_usd)))
 
 
 def save_draft(runner_module, item: "Item", text: str, cwd) -> DraftResult:

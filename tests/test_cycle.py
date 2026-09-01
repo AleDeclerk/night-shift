@@ -412,3 +412,93 @@ def test_the_cycle_looks_for_new_projects(tmp_path, monkeypatch):
     cycle.run_once(conn, runner_module=stub, mail_module=stub,
                    now=NOW, ceiling_usd=45.0, workspace=tmp_path)
     assert seen, "the cycle never looked for projects"
+
+
+# --- what the cascade is charged ------------------------------------------
+
+def test_the_triage_is_charged_to_claude(tmp_path):
+    """The triage is the most expensive call of the cycle, and it rode in
+    `cycle_ran`, which names no engine. `cascade.spent_by` reads only the
+    events that name one, so the ladder judged Claude on the drafts alone."""
+    from nightshift import cascade
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(cost=0.87)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    assert cascade.spent_by(conn, "claude", NOW) == 0.87
+    event = conn.execute(
+        "SELECT * FROM events WHERE kind='triage_ran'").fetchone()
+    assert event["engine"] == "claude"
+
+
+def test_a_triage_that_failed_is_charged_too(tmp_path):
+    from nightshift import cascade
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(error="401 OAuth access token has expired", cost=0.3)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path)
+    assert cascade.spent_by(conn, "claude", NOW) == 0.3
+
+
+def test_claude_is_charged_for_the_save_of_a_reply_that_ollama_wrote(tmp_path):
+    """The compose cost and the save cost were summed and charged to the
+    compose engine. The save always runs on Claude, because only Claude holds
+    the connector, so the ladder read Claude as cheaper than it is."""
+    from nightshift import cascade
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    stub = Stub(items=[Item("needs_you", "Shannon: deck", "3 layouts.",
+                            "https://x/1")], cost=0.5)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=45.0, workspace=tmp_path,
+                   mail_engine="ollama")
+    # 0.5 for the triage and 0.2 for the save, both on Claude.
+    assert cascade.spent_by(conn, "claude", NOW) == 0.7
+    # The local engine has no ceiling, so the cascade always reads zero.
+    assert cascade.spent_by(conn, "ollama", NOW) == 0.0
+    charged = {(r["engine"], r["cost_usd"]) for r in conn.execute(
+        "SELECT engine, cost_usd FROM events WHERE engine IS NOT NULL")}
+    assert ("ollama", 0.1) in charged
+    assert ("claude", 0.2) in charged
+
+
+def test_a_job_names_the_engine_that_ran_it(tmp_path, monkeypatch):
+    """`jobs.run_next` gave back a cost and wrote no event with an engine, so
+    a job that ran on Cursor moved no step of the ladder."""
+    from nightshift import cascade, jobs
+    from nightshift.runner import RunResult
+
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "one", now=NOW)
+
+    class JobRunner(Stub):
+        def run(self, prompt, **kw):
+            return RunResult(True, text='{"finished": true, "summary": "x"}',
+                             cost_usd=0.6)
+
+    stub = JobRunner(cost=0.4)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=45.0, workspace=tmp_path)
+    event = conn.execute("SELECT * FROM events WHERE kind='job_ran'").fetchone()
+    assert event["engine"] == "claude"
+    assert event["cost_usd"] == 0.6
+    # 0.4 for the triage and 0.6 for the job.
+    assert cascade.spent_by(conn, "claude", NOW) == 1.0
+
+
+def test_a_job_that_failed_is_charged_too(tmp_path):
+    from nightshift import cascade, jobs
+    from nightshift.runner import RunResult
+
+    conn = db.connect(tmp_path / "s.db")
+    jobs.add(conn, "one", now=NOW)
+
+    class JobFails(Stub):
+        def run(self, prompt, **kw):
+            return RunResult(False, error="the tool broke", cost_usd=0.6)
+
+    stub = JobFails(cost=0.0)
+    cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
+                   ceiling_usd=45.0, workspace=tmp_path)
+    assert jobs.get(conn, 1)["state"] == "failed"
+    assert cascade.spent_by(conn, "claude", NOW) == 0.6

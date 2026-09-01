@@ -50,6 +50,12 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # would protect, so the triage itself reports an authentication failure.
     result = mail_module.triage(runner_module, cwd=workspace, since=since)
     spent = result.cost_usd
+    # The triage is the most expensive call of the cycle, and only Claude
+    # makes it. It used to ride in `cycle_ran`, which names no engine, and
+    # `cascade.spent_by` reads only the events that name one. So the ladder
+    # judged Claude on the drafts alone. A triage that failed spent too.
+    life.record(conn, "triage_ran", engine="claude", cost_usd=spent,
+                detail=result.error, now=now)
     if result.error:
         runs.end(conn, run_id, False, cost=spent, error=result.error[:400], now=now)
         return
@@ -74,7 +80,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             continue
 
         body = item.body
-        draft_ok, draft_cost = False, 0.0
+        reply = None
         try:
             if item.bucket == "needs_you":
                 # The ceiling is checked here too, not only before the cycle.
@@ -83,15 +89,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
                 if decision.spent_usd + spent >= ceiling_usd:
                     stopped_by_budget += 1
                 else:
-                    cost, ok, note = mail.reply_cost_and_trace(
+                    reply = mail.reply(
                         mail_module, runner_module, item, engine=compose_engine,
                         model=compose_model, cwd=workspace)
-                    spent += cost
-                    draft_ok, draft_cost = ok, cost
+                    spent += reply.cost_usd
                     # The trace of the draft rides with the item. Without it
                     # an empty draft looks the same as a written one.
-                    mark = "Draft: " if ok else "NO DRAFT. "
-                    body = f"{item.body}\n\n{mark}{note}"
+                    mark = "Draft: " if reply.ok else "NO DRAFT. "
+                    body = f"{item.body}\n\n{mark}{reply.note}"
             cur = conn.execute(
                 "INSERT INTO items (run_id, created_at, bucket, title, body,"
                 " source_url, excerpt) VALUES (?,?,?,?,?,?,?)",
@@ -101,9 +106,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             item_id = cur.lastrowid
             life.record(conn, "item_found", item_id=item_id,
                         detail=item.bucket, now=now)
-            if draft_ok:
-                life.record(conn, "draft_written", item_id=item_id,
-                            engine=compose_engine, cost_usd=draft_cost, now=now)
+            if reply is not None:
+                # One event for each call, so the save that Claude made is
+                # charged to Claude and not to the engine that composed. A
+                # draft that failed still spent, so it leaves a record too.
+                kind = "draft_written" if reply.ok else "draft_failed"
+                for charged, cost in reply.charges:
+                    life.record(conn, kind, item_id=item_id, engine=charged,
+                                cost_usd=cost, now=now)
         except Exception as exc:  # noqa: BLE001
             runs.end(conn, run_id, False, cost=spent,
                      error=f"{item.title}: {exc}"[:400], now=now)

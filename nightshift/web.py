@@ -255,12 +255,13 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
                 compose_engine, compose_model = step.engine, step.model
             # The same call the cycle makes: Claude composes and saves in one
             # go, any other engine composes and Claude saves it.
-            cost, ok, note = mail.reply_cost_and_trace(
-                mail, runner, item, engine=compose_engine,
-                model=compose_model, cwd=backends.WORKSPACE)
-            if ok:
-                life.record(conn, "draft_written", item_id=item_id,
-                            engine=compose_engine, cost_usd=cost, detail=note)
+            answer = mail.reply(mail, runner, item, engine=compose_engine,
+                                model=compose_model, cwd=backends.WORKSPACE)
+            if answer.ok:
+                for charged, cost in answer.charges:
+                    life.record(conn, "draft_written", item_id=item_id,
+                                engine=charged, cost_usd=cost,
+                                detail=answer.note)
             life.apply_verb(conn, item_id, "rehacer")
         return RedirectResponse("/", status_code=303)
 
