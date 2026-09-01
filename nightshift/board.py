@@ -110,9 +110,15 @@ def by_day(conn: sqlite3.Connection, now: dt.datetime | None = None,
         found = conn.execute(
             "SELECT count(*) FROM events WHERE kind='item_found'"
             " AND at >= ? AND at < ?", (start, end)).fetchone()[0]
+        # `cycle_ran` carries the total of the cycle, with no engine, while
+        # `triage_ran` / `draft_written` / `job_ran` carry the parts, each
+        # with one. Summing every event of the day counted the parts twice,
+        # the way `week()["spend"]` already avoids by reading only the
+        # events that name an engine.
         spend = conn.execute(
             "SELECT coalesce(sum(cost_usd), 0) FROM events"
-            " WHERE at >= ? AND at < ?", (start, end)).fetchone()[0]
+            " WHERE at >= ? AND at < ? AND engine IS NOT NULL",
+            (start, end)).fetchone()[0]
         rows.append({"date": day.isoformat(), "found": found,
                     "spend": float(spend)})
     return rows

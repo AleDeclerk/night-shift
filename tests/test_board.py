@@ -137,6 +137,19 @@ def test_by_day_gives_one_row_per_day_including_empty_days(tmp_path):
     assert by_date[empty_day] == {"date": empty_day, "found": 0, "spend": 0.0}
 
 
+def test_by_day_sums_only_events_that_name_an_engine(tmp_path):
+    """`cycle_ran` carries the total of the cycle, with no engine, and
+    `triage_ran` / `draft_written` / `job_ran` carry the parts, each with
+    one. Summing every event of the day counted the parts twice."""
+    conn = db.connect(tmp_path / "s.db")
+    _event(conn, "cycle_ran", cost_usd=3.0, at=NOW)   # no engine
+    _event(conn, "triage_ran", engine="claude", cost_usd=1.0, at=NOW)
+    _event(conn, "draft_written", engine="claude", cost_usd=2.0, at=NOW)
+    rows = board.by_day(conn, now=NOW, days=7)
+    today = {r["date"]: r for r in rows}[NOW.date().isoformat()]
+    assert today["spend"] == 3.0
+
+
 # --- the window ----------------------------------------------------------
 
 def test_a_seven_day_window_ignores_an_event_from_thirty_days_ago(tmp_path):
