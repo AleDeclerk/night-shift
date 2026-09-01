@@ -485,9 +485,15 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
   </div>
   <div class="cell cell--tight">
     <div class="k">Consumo</div>
+    {% if real_quota %}
+    <div class="v">{{ real_quota.week_pct }}% de la semana</div>
+    <div class="gauge"><span style="width:{{ real_quota.week_pct }}%"></span></div>
+    <div class="v tiny">{{ spent }} / {{ ceiling }} contados</div>
+    {% else %}
     <div class="v">{{ spent }} / {{ ceiling }}</div>
     <div class="gauge"><span style="width:{{ (spent / ceiling * 100) if ceiling else 0 }}%"></span></div>
     <div class="v tiny">no es un cobro</div>
+    {% endif %}
   </div>
 
   <div class="cell cell--eng">
@@ -808,9 +814,14 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
       <div class="ladder">
         <h3>La cascada</h3>
         <p class="note" style="margin:0 0 .9rem;text-align:left">
+          {% if real_quota %}
+          Hoy Claude mira la cuota real: le quedan
+          {{ real_quota.allowance }} puntos de la semana.
+          {% else %}
           Hoy Claude reserva {{ "%g"|format(claude_reserve) }} de
           {{ "%g"|format(claude_ceiling) }}, quedan
           {{ "%g"|format(claude_ceiling - claude_reserve) }}.
+          {% endif %}
         </p>
         <ul class="ladderlist">
         {% for row in ladder %}
@@ -827,6 +838,37 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
         </ul>
         {% if last_fall %}
         <p class="note" style="margin:.6rem 0 0;text-align:left">Última caída: {{ last_fall }}</p>
+        {% endif %}
+      </div>
+
+      <div class="ladder">
+        <h3>Cuota real</h3>
+        {% if real_quota %}
+        <p class="note" style="margin:0 0 .9rem;text-align:left">
+          Lo que contesta <code>claude -p /usage</code>, no lo que contamos
+          nosotros. La reserva guarda 10 puntos por cada día que falta.
+        </p>
+        <ul class="ladderlist">
+          <li>
+            <span class="lname">Semana</span>
+            <span class="lspent">{{ real_quota.week_pct }}% usada · vuelve a cero el {{ real_quota.week_resets }}</span>
+          </li>
+          <li>
+            <span class="lname">Días</span>
+            <span class="lspent">faltan {{ real_quota.days_left }} · la reserva guarda {{ real_quota.reserve }} puntos</span>
+          </li>
+          <li>
+            <span class="lname">Margen</span>
+            <span class="lspent">{{ real_quota.allowance }} puntos de la semana</span>
+            <span class="lroom">es lo que puede gastar</span>
+          </li>
+          <li>
+            <span class="lname">Sesión</span>
+            <span class="lspent">{{ real_quota.session_pct }}% usada · vuelve a cero a las {{ real_quota.session_resets }}</span>
+          </li>
+        </ul>
+        {% else %}
+        <p class="note" style="margin:0;text-align:left">Sin lectura fresca, el sistema cuenta: manda el techo que fijaste vos.</p>
         {% endif %}
       </div>
     </div>

@@ -93,6 +93,28 @@ def _hhmm(iso: str) -> str:
 TEMPLATES.env.filters["hhmm"] = _hhmm
 
 
+def _real_quota(conn, now: dt.datetime) -> dict | None:
+    """What the CLI last said about the real quota, ready to draw.
+
+    It reads the stored event and nothing else: one `/usage` call takes
+    about three seconds, and a page load may never wait for that. None means
+    no fresh reading, and the page then says the system is counting.
+    """
+    reading = quota.last_usage(conn, now)
+    if reading is None:
+        return None
+    days = reading.days_left(now)
+    return {
+        "week_pct": reading.week_pct,
+        "week_resets": _when(reading.week_resets.isoformat()),
+        "days_left": days,
+        "reserve": days * cascade.RESERVE_PER_DAY,
+        "allowance": reading.allowance_pct(now, cascade.RESERVE_PER_DAY),
+        "session_pct": reading.session_pct,
+        "session_resets": _hhmm(reading.session_resets.isoformat()),
+    }
+
+
 def make_app(conn, ceiling_usd: float, engine_source=None,
              port: int = PORT) -> FastAPI:
     """`engine_source` lets a test inject engines. Without it the page runs the
@@ -165,6 +187,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             "ceiling": cascade.ceiling_of(step),
         } for step in cascade.LADDER]
         claude_reserve = cascade.reserve_for(now, claude_ceiling)
+        real_quota = _real_quota(conn, now)
 
         # A running job apart from the queued ones: otherwise a dead job,
         # stuck in 'running' until the next reap, reads as one still
@@ -223,6 +246,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             "job_engines": engines.JOB_ENGINES,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
+            "real_quota": real_quota,
             "ladder": ladder, "claude_ceiling": claude_ceiling,
             "claude_reserve": claude_reserve, "last_fall": cascade.last_fall(conn),
             "projects": all_projects_rows,

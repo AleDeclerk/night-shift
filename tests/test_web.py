@@ -1125,3 +1125,85 @@ def test_a_redo_that_spent_stops_the_next_one(tmp_path, monkeypatch):
     assert conn.execute(
         "SELECT count(*) FROM events WHERE kind='redo_refused'"
     ).fetchone()[0] == 1
+
+
+# --- the real quota, on the page ----------------------------------------
+
+def _store_reading(conn, *, week_pct=4, session_pct=35):
+    """A reading of now, the way the tick leaves it. The page reads the
+    store and it never shells out: one `/usage` call takes three seconds."""
+    from nightshift import quota, usage
+    now = dt.datetime.now()
+    reading = usage.Usage(
+        week_pct=week_pct,
+        week_resets=now + dt.timedelta(days=6, hours=12),
+        session_pct=session_pct,
+        session_resets=now + dt.timedelta(hours=2))
+    conn.execute(
+        "INSERT INTO events (at, kind, detail) VALUES (?, 'usage_read', ?)",
+        (now.isoformat(), quota._as_json(reading)))
+    conn.commit()
+    return reading
+
+
+def test_the_room_shows_the_real_quota(tmp_path):
+    """Week 4% used and seven days left: the reserve is 70 points and the
+    allowance is 26."""
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, week_pct=4, session_pct=35)
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "Cuota real" in room
+    assert "4%" in room          # the share of the week
+    assert "7" in room           # the days left
+    assert "70" in room          # the reserve those days hold back
+    assert "26" in room          # the allowance
+    assert "35%" in room         # the share of the session
+
+
+def test_the_room_says_when_it_has_no_fresh_reading(tmp_path):
+    """A page that shows nothing would read as a quota of zero. It says the
+    system is counting instead."""
+    conn = db.connect(tmp_path / "s.db")
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "Cuota real" in room
+    assert "sin lectura fresca, el sistema cuenta" in room.lower()
+
+
+def test_a_stale_reading_reads_as_no_reading_on_the_page(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    from nightshift import quota, usage
+    old = dt.datetime.now() - dt.timedelta(hours=3)
+    reading = usage.Usage(4, old + dt.timedelta(days=6), 35,
+                          old + dt.timedelta(hours=1))
+    conn.execute(
+        "INSERT INTO events (at, kind, detail) VALUES (?, 'usage_read', ?)",
+        (old.isoformat(), quota._as_json(reading)))
+    conn.commit()
+
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "sin lectura fresca, el sistema cuenta" in room.lower()
+
+
+def test_the_top_bar_shows_the_real_week_when_there_is_a_reading(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    _store_reading(conn, week_pct=4)
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    bar = body.split('<div class="timecard">')[1].split("cell--eng")[0]
+    assert "4% de la semana" in bar
+    assert "0.0 / 20.0" in bar     # the counter stays, as the small line
+
+
+def test_the_top_bar_counts_when_there_is_no_reading(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    bar = body.split('<div class="timecard">')[1].split("cell--eng")[0]
+    assert "de la semana" not in bar
+    assert "0.0 / 20.0" in bar
