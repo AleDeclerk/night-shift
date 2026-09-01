@@ -825,6 +825,9 @@ dialog#room .proj .retire{background:transparent;color:var(--stamp);
           </li>
         {% endfor %}
         </ul>
+        {% if last_fall %}
+        <p class="note" style="margin:.6rem 0 0;text-align:left">Última caída: {{ last_fall }}</p>
+        {% endif %}
       </div>
     </div>
 

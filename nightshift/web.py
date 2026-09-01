@@ -224,7 +224,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
             "mail_engine": engines.get_mail_engine(conn),
             "mail_engines": engines.MAIL_ENGINES,
             "ladder": ladder, "claude_ceiling": claude_ceiling,
-            "claude_reserve": claude_reserve,
+            "claude_reserve": claude_reserve, "last_fall": cascade.last_fall(conn),
             "projects": all_projects_rows,
             "schedules": jobs.SCHEDULES,
             "schedule_labels": jobs.LABELS,
@@ -309,7 +309,7 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
         mail_engine = engines.get_mail_engine(conn)
         compose_engine, compose_model = mail_engine, None
         if mail_engine == "auto":
-            step, _fallen_from = cascade.choose(conn, now)
+            step = cascade.choose_and_record(conn, now)
             compose_engine, compose_model = step.engine, step.model
 
         def keep(body) -> int:

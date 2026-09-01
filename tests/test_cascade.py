@@ -215,3 +215,53 @@ def test_the_environment_moves_what_the_cascade_allows(tmp_path, monkeypatch):
 
     monkeypatch.setenv("NIGHTSHIFT_CEILING_USD", "45.0")
     assert cascade.has_room(conn, cascade.LADDER[0], SUN)[0] is True
+
+
+# --- choose_and_record: why the ladder fell, kept instead of thrown away --
+
+def test_choose_and_record_writes_no_event_when_nothing_fell(tmp_path,
+                                                              monkeypatch):
+    conn = db.connect(tmp_path / "s.db")
+    monkeypatch.setattr(cascade.backends, "check_all", lambda: ALL_ON)
+    monkeypatch.setattr(cascade.backends, "last_probes", lambda c: {})
+    step = cascade.choose_and_record(conn, WED)
+    assert step.name == "claude"
+    assert conn.execute(
+        "SELECT count(*) FROM events WHERE kind='engine_chosen'"
+    ).fetchone()[0] == 0
+
+
+def test_choose_and_record_writes_the_skipped_reasons_on_a_fall(tmp_path,
+                                                                 monkeypatch):
+    conn = db.connect(tmp_path / "s.db")
+    _event(conn, "claude", cost_usd=15.0, at=WED)  # over Wednesday's allowance
+    monkeypatch.setattr(cascade.backends, "check_all", lambda: ALL_ON)
+    monkeypatch.setattr(cascade.backends, "last_probes", lambda c: {})
+
+    step = cascade.choose_and_record(conn, WED)
+
+    assert step.name == "grok"
+    row = conn.execute(
+        "SELECT * FROM events WHERE kind='engine_chosen'").fetchone()
+    assert row is not None
+    assert row["engine"] == step.engine == "cursor"  # the CLI, not the step name
+    assert "claude" in row["detail"]
+
+
+def test_choose_and_record_with_forced_skips_the_walk(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    step = cascade.choose_and_record(conn, WED, forced="local")
+    assert step.name == "local"
+    assert conn.execute(
+        "SELECT count(*) FROM events WHERE kind='engine_chosen'"
+    ).fetchone()[0] == 0
+
+
+def test_last_fall_gives_the_detail_of_the_most_recent_fall(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    assert cascade.last_fall(conn) is None
+    conn.execute(
+        "INSERT INTO events (at, kind, engine, detail) VALUES"
+        " (?, 'engine_chosen', 'grok', 'claude: no room')", (WED.isoformat(),))
+    conn.commit()
+    assert cascade.last_fall(conn) == "claude: no room"

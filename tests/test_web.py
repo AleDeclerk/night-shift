@@ -413,6 +413,31 @@ def test_the_room_shows_the_three_roles_together(tmp_path):
     assert "<select disabled>" in room     # the mail fetch cannot be moved
 
 
+def test_the_page_shows_the_last_fall_under_the_ladder(tmp_path):
+    """`cascade.choose` computed the skipped steps and their reasons, and
+    every caller dropped them. The design says the page names the step that
+    was skipped."""
+    conn = db.connect(tmp_path / "s.db")
+    conn.execute(
+        "INSERT INTO events (at, kind, engine, detail) VALUES"
+        " (?, 'engine_chosen', 'grok', 'claude: spent 15.00 of 20.00 usd')",
+        (dt.datetime.now().isoformat(),))
+    conn.commit()
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "Última caída" in room
+    assert "claude: spent 15.00 of 20.00 usd" in room
+
+
+def test_the_page_shows_no_last_fall_line_when_nothing_ever_fell(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    body = _client(web.make_app(conn, engine_source=_engines,
+                                   ceiling_usd=20.0)).get("/").text
+    room = body.split('<dialog id="room">')[1]
+    assert "Última caída" not in room
+
+
 # --- the life of an item -----------------------------------------------
 
 def _open_item(conn) -> int:

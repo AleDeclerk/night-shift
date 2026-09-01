@@ -8,7 +8,7 @@ import dataclasses
 import datetime as dt
 import sqlite3
 
-from nightshift import backends, quota
+from nightshift import backends, life, quota
 
 
 @dataclasses.dataclass(frozen=True)
@@ -137,3 +137,31 @@ def choose(conn: sqlite3.Connection, now: dt.datetime, *,
     # ollama is not installed on this machine). The local step still takes
     # the work: no API key, no cost, the one step with no way to run dry.
     return LADDER[-1], skipped
+
+
+def choose_and_record(conn: sqlite3.Connection, now: dt.datetime, *,
+                      forced: str | None = None) -> Step:
+    """`choose`, plus the one line the cascade design asks for: the page
+    names the step that was skipped.
+
+    `choose` already computes every skipped step and its reason, and every
+    caller bound them to a name it never read. This writes them instead, as
+    one `engine_chosen` event, only when something was actually skipped: a
+    step that needed no fallback fell nowhere, and there is nothing to show.
+    """
+    step, skipped = choose(conn, now, forced=forced)
+    if skipped:
+        life.record(conn, "engine_chosen", engine=step.engine,
+                   detail="; ".join(skipped), now=now)
+    return step
+
+
+def last_fall(conn: sqlite3.Connection) -> str | None:
+    """The detail of the most recent `engine_chosen` event that has one.
+    Shown in the machine room, under the ladder, as "Última caída: ...".
+    """
+    row = conn.execute(
+        "SELECT detail FROM events WHERE kind='engine_chosen'"
+        " AND detail IS NOT NULL AND detail != '' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return row["detail"] if row else None

@@ -41,7 +41,7 @@ def run(conn: sqlite3.Connection, *, runner_module, workspace,
                 if job_engine == "auto":
                     # A job prompt names no model, so the ladder only picks
                     # the CLI here, the same way the cycle resolves it.
-                    step, _fallen_from = cascade.choose(conn, now)
+                    step = cascade.choose_and_record(conn, now)
                     job_engine = step.engine
                 while jobs_run < max_jobs and jobs.next_queued(conn) is not None:
                     if decision.spent_usd + cost_usd >= ceiling_usd:

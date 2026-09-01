@@ -78,7 +78,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # gets the same choice and the page can name the one engine that worked.
     compose_engine, compose_model = mail_engine, None
     if mail_engine == "auto":
-        step, _fallen_from = cascade.choose(conn, now)
+        step = cascade.choose_and_record(conn, now)
         compose_engine, compose_model = step.engine, step.model
 
     def keep(item, body) -> int:
@@ -145,7 +145,7 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             if job_engine == "auto":
                 # The job prompt names no model, so the ladder only picks the
                 # CLI here; a job never asks for Grok over Flash by name.
-                step, _fallen_from = cascade.choose(conn, now)
+                step = cascade.choose_and_record(conn, now)
                 job_engine = step.engine
             spent += jobs.run_next(conn, runner_module, workspace,
                                    engine=job_engine)
