@@ -3,6 +3,16 @@ from fastapi.testclient import TestClient
 
 from nightshift import backends, db, web
 
+# The page answers the loopback address it binds and nothing else, so every
+# test drives it from there. A request with another `Host` is a rebinding
+# attack, and the middleware gives it 403.
+BASE = f"http://127.0.0.1:{web.PORT}"
+
+
+def _client(app, **kw):
+    kw.setdefault("base_url", BASE)
+    return TestClient(app, **kw)
+
 
 def _engines():
     """Fixed engines. No test may run a real CLI: it would take five seconds
@@ -27,7 +37,7 @@ def test_the_page_shows_the_three_buckets(tmp_path):
                  " source_url) VALUES (1,'2026-08-26T03:00:00','needs_you',"
                  "'Shannon: deck','She asks for 3 layouts.','https://x/1')")
     conn.commit()
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     body = client.get("/").text
     assert "Shannon: deck" in body
     # The link goes through /open so the page can count what you read. The
@@ -40,7 +50,7 @@ def test_the_page_shows_the_three_buckets(tmp_path):
 
 def test_a_new_job_goes_to_the_queue(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     client.post("/jobs", data={"prompt": "Prepare the sprint review"},
                 follow_redirects=False)
     row = conn.execute("SELECT * FROM jobs").fetchone()
@@ -55,7 +65,7 @@ def test_the_page_shows_the_error_of_the_last_run(tmp_path):
                  " VALUES ('2026-08-26T03:00:00','mail',0,"
                  "'401 OAuth access token has expired')")
     conn.commit()
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     assert "401" in client.get("/").text
 
 
@@ -65,14 +75,14 @@ def test_the_page_says_when_the_last_good_cycle_ran(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind, ok)"
                  " VALUES ('2026-08-30T06:30:00','mail',1)")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "30 Aug" in body
     assert "06:30" in body
 
 
 def test_the_page_says_never_when_no_cycle_ever_ran(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "never" in body.lower()
 
 
@@ -84,7 +94,7 @@ def test_a_failed_cycle_does_not_count_as_the_last_good_one(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind, ok, error)"
                  " VALUES ('2026-08-31T06:30:00','mail',0,'401 expired')")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "30 Aug" in body  # the good one, not the failed one
     assert "401" in body
 
@@ -96,7 +106,7 @@ def test_opening_an_item_records_the_time(tmp_path):
     conn.execute("INSERT INTO items (run_id, created_at, bucket, title,"
                  " source_url) VALUES (1,'x','needs_you','t','https://x/1')")
     conn.commit()
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.get("/open/1", follow_redirects=False)
     assert r.headers["location"] == "https://x/1"
     assert conn.execute("SELECT opened_at FROM items WHERE id=1"
@@ -109,7 +119,7 @@ def test_a_job_that_needs_you_shows_its_question(tmp_path):
                  " VALUES ('x','Prepare the sprint review','needs_you',"
                  "'Which sprint number?')")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "Prepare the sprint review" in body
     assert "Which sprint number?" in body
 
@@ -119,7 +129,7 @@ def test_a_queued_job_is_visible_on_the_page(tmp_path):
     conn.execute("INSERT INTO jobs (created_at, prompt, state)"
                  " VALUES ('x','Prepare the sprint review','queued')")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "Prepare the sprint review" in body
 
 
@@ -130,7 +140,7 @@ def test_a_cycle_that_never_finished_is_visible(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind)"
                  " VALUES ('2026-08-30T06:30:00','mail')")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
 
 
@@ -143,7 +153,7 @@ def test_a_cycle_that_is_running_now_is_not_called_dead(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
                  (just_now,))
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" not in body.lower()
     assert "running" in body.lower()
 
@@ -155,13 +165,13 @@ def test_a_cycle_that_started_long_ago_and_never_ended_is_dead(tmp_path):
     conn.execute("INSERT INTO runs (started_at, kind) VALUES (?, 'mail')",
                  (old,))
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0)).get("/").text
     assert "did not finish" in body.lower()
 
 
 def test_the_machine_room_shows_every_engine(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0)).get("/").text
+    body = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0)).get("/").text
     for label in ("Claude", "Gemini", "Cursor", "Ollama"):
         assert label in body
 
@@ -169,13 +179,13 @@ def test_the_machine_room_shows_every_engine(tmp_path):
 def test_sign_in_refuses_a_get(tmp_path):
     """A prefetch of the browser must not start a login."""
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     assert client.get("/machines/cursor/login").status_code == 405
 
 
 def test_sign_in_status_answers_before_any_attempt(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     answer = client.get("/machines/cursor/login/status").json()
     assert answer["state"] == "idle"
     assert answer["has_link"] is False
@@ -183,7 +193,7 @@ def test_sign_in_status_answers_before_any_attempt(tmp_path):
 
 def test_the_status_payload_carries_no_credential(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     body = client.get("/machines/cursor/login/status").text
     assert "challenge" not in body
     assert "cursor.com" not in body
@@ -191,13 +201,13 @@ def test_the_status_payload_carries_no_credential(tmp_path):
 
 def test_cancel_answers_even_with_no_flow(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=20.0))
     assert client.post("/machines/cursor/login/cancel").json()["state"] == "cancelled"
 
 
 def test_an_engine_with_no_probe_says_so(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "SIN PRUEBA REAL" in body
 
@@ -208,7 +218,7 @@ def test_a_stored_probe_shows_what_the_engine_did(tmp_path):
     backends.save_probe(conn, backends.ProbeResult(
         "cursor", False, False, 0.0,
         "Incompatible auth server: does not support dynamic client registration"))
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "Incompatible auth server" in body
     assert "NO PUDO" in body
@@ -218,7 +228,7 @@ def test_the_probe_button_names_the_price(tmp_path):
     """The price is quota, not money. A plan of this kind meters no dollars,
     and a button that says USD reads as a charge."""
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "GASTA CUOTA" in body
     assert "GRATIS" in body
@@ -228,7 +238,7 @@ def test_the_page_says_that_the_meter_is_not_a_bill(tmp_path):
     """`total_cost_usd` is what the work would have cost through the API. The
     subscription charges none of it, so the page must not read as an invoice."""
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "no es un cobro" in body
 
@@ -236,7 +246,7 @@ def test_the_page_says_that_the_meter_is_not_a_bill(tmp_path):
 def test_choosing_an_engine_is_remembered(tmp_path):
     from nightshift import engines
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post("/machines/engine", data={"name": "ollama"},
                 follow_redirects=False)
@@ -246,7 +256,7 @@ def test_choosing_an_engine_is_remembered(tmp_path):
 def test_an_unknown_engine_changes_nothing(tmp_path):
     from nightshift import engines
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post("/machines/engine", data={"name": "nothing"},
                 follow_redirects=False)
@@ -257,7 +267,7 @@ def test_the_page_marks_the_chosen_engine(tmp_path):
     from nightshift import engines
     conn = db.connect(tmp_path / "s.db")
     engines.set_engine(conn, "ollama")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert 'value="ollama" selected' in body or "selected" in body
 
@@ -265,7 +275,7 @@ def test_the_page_marks_the_chosen_engine(tmp_path):
 def test_choosing_a_mail_engine_is_remembered(tmp_path):
     from nightshift import engines
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post("/machines/mail-engine", data={"name": "ollama"},
                 follow_redirects=False)
@@ -275,7 +285,7 @@ def test_choosing_a_mail_engine_is_remembered(tmp_path):
 def test_an_unknown_mail_engine_changes_nothing(tmp_path):
     from nightshift import engines
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post("/machines/mail-engine", data={"name": "nothing"},
                 follow_redirects=False)
@@ -284,7 +294,7 @@ def test_an_unknown_mail_engine_changes_nothing(tmp_path):
 
 def test_the_page_shows_the_mail_engine_form(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert 'action="/machines/mail-engine"' in body
     assert "Motor que redacta" in body
@@ -302,7 +312,7 @@ def test_the_injected_engines_are_the_ones_used(tmp_path):
         return [backends.Engine("claude", "MOTOR-INYECTADO", "x", True, True,
                                 True, True, True, False)]
 
-    body = TestClient(web.make_app(conn, engine_source=marker,
+    body = _client(web.make_app(conn, engine_source=marker,
                                    ceiling_usd=20.0)).get("/").text
     assert called, "the page ignored the injected source"
     assert "MOTOR-INYECTADO" in body
@@ -313,7 +323,7 @@ def test_the_panel_tells_the_connector_from_the_ability_to_work(tmp_path):
     connector is exclusive: a local model reads the stored mail and writes the
     reply without one."""
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "Conector de Gmail" in body
     assert "Trabaja el correo" in body
@@ -323,7 +333,7 @@ def test_the_bar_shows_every_engine_at_a_glance(tmp_path):
     """One cell used to name only the mail engine. The bar now says which
     engines exist and which one is down, without opening anything."""
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     bar = body.split('class="bar"')[1].split('class="panel')[0]
     for label in ("Claude", "Gemini", "Cursor", "Ollama"):
@@ -333,7 +343,7 @@ def test_the_bar_shows_every_engine_at_a_glance(tmp_path):
 
 def test_the_bar_says_who_does_what(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     assert "Motor del correo" in body
     assert "Motor que redacta" in body
@@ -344,7 +354,7 @@ def test_the_room_shows_the_three_roles_together(tmp_path):
     """Fetching, writing and doing jobs are three different jobs, and only the
     first one is locked. Showing the locked one says why it cannot move."""
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     room = body.split('<dialog id="room">')[1]
     assert "Baja y guarda el correo" in room
@@ -369,7 +379,7 @@ def test_posting_a_closing_verb_moves_the_item_out_of_pendiente(tmp_path):
     for verb in ("listo", "lo_hago_yo", "no_era_nada", "manana"):
         conn = db.connect(tmp_path / f"s-{verb}.db")
         item_id = _open_item(conn)
-        client = TestClient(web.make_app(conn, engine_source=_engines,
+        client = _client(web.make_app(conn, engine_source=_engines,
                                          ceiling_usd=5.0))
         r = client.post(f"/items/{item_id}/{verb}", follow_redirects=False)
         assert r.status_code == 303
@@ -381,7 +391,7 @@ def test_posting_a_closing_verb_moves_the_item_out_of_pendiente(tmp_path):
 def test_an_unknown_verb_answers_without_changing_anything(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     item_id = _open_item(conn)
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
     r = client.post(f"/items/{item_id}/send_it", follow_redirects=False)
     assert r.status_code == 303
@@ -393,7 +403,7 @@ def test_an_unknown_verb_answers_without_changing_anything(tmp_path):
 def test_the_page_shows_the_five_buttons_under_an_item(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     _open_item(conn)
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     for label in ("Listo", "Lo hago yo", "No era nada", "Mañana", "Rehacer"):
         assert label in body, label
@@ -413,7 +423,7 @@ def test_rehacer_writes_a_new_draft_and_the_item_stays_pending(
         return DraftResult(0.4, True, "Redone.")
 
     monkeypatch.setattr(web_module.mail, "write_draft", fake_write_draft)
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
     r = client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
     assert r.status_code == 303
@@ -438,7 +448,7 @@ def test_answering_a_stopped_job_puts_it_back_in_the_queue(tmp_path):
                  "'Which sprint number?')")
     conn.commit()
     job_id = conn.execute("SELECT id FROM jobs").fetchone()[0]
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
     r = client.post(f"/jobs/{job_id}/answer", data={"answer": "Sprint 11"},
                     follow_redirects=False)
@@ -464,7 +474,7 @@ def test_semana_answers_200_and_shows_the_false_alarm_rate(tmp_path):
             "INSERT INTO events (at, kind, verb) VALUES (?,'item_closed',?)",
             (now, verb))
     conn.commit()
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.get("/semana")
     assert r.status_code == 200
     assert "40%" in r.text
@@ -472,7 +482,7 @@ def test_semana_answers_200_and_shows_the_false_alarm_rate(tmp_path):
 
 def test_semana_with_a_thin_week_says_not_enough_history(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     body = client.get("/semana").text
     assert "no hay suficiente" in body.lower()
 
@@ -482,7 +492,7 @@ def test_posting_a_rating_stores_it(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     item_id = _open_item(conn)
     life.apply_verb(conn, item_id, "listo")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.post(f"/items/{item_id}/rate",
                     data={"score": "8", "comment": "Good."},
                     follow_redirects=False)
@@ -498,7 +508,7 @@ def test_posting_an_invalid_score_changes_nothing(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     item_id = _open_item(conn)
     life.apply_verb(conn, item_id, "listo")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.post(f"/items/{item_id}/rate", data={"score": "11"},
                     follow_redirects=False)
     assert r.status_code == 303
@@ -513,7 +523,7 @@ def test_posting_a_job_with_a_project_stores_it(tmp_path):
     from nightshift import projects
     conn = db.connect(tmp_path / "s.db")
     project_id = projects.add(conn, "aph-knowledge", "veritas")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     client.post("/jobs", data={"prompt": "Fix the pipeline",
                                "project_id": str(project_id),
                                "schedule": "once"},
@@ -527,7 +537,7 @@ def test_the_form_shows_both_scopes(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     projects.add(conn, "veritas-project", "veritas")
     projects.add(conn, "personal-project", "personal")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "Personal" in body
     assert "Veritas" in body
@@ -538,7 +548,7 @@ def test_the_form_shows_both_scopes(tmp_path):
 
 def test_posting_a_new_project_stores_it(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.post("/projects", data={"name": "side-project",
                                        "scope": "personal"},
                     follow_redirects=False)
@@ -551,7 +561,7 @@ def test_posting_a_new_project_stores_it(tmp_path):
 
 def test_posting_a_new_project_with_an_unknown_scope_changes_nothing(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    client = TestClient(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
+    client = _client(web.make_app(conn, engine_source=_engines, ceiling_usd=5.0))
     r = client.post("/projects", data={"name": "side-project",
                                        "scope": "nowhere"},
                     follow_redirects=False)
@@ -578,7 +588,7 @@ def test_a_job_with_a_project_that_holds_a_graph_shows_its_concepts(
     monkeypatch.setattr(web_module.knowledge, "about",
                         lambda *a, **kw: [{"label": "BrailleAI Pipeline",
                                           "community": 1, "links": []}])
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "BrailleAI Pipeline" in body
 
@@ -593,7 +603,7 @@ def test_a_job_with_a_project_that_holds_no_graph_says_so(tmp_path):
         "INSERT INTO jobs (created_at, prompt, state, project_id, schedule)"
         " VALUES ('x','do something','queued',?,'once')", (project_id,))
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "no tiene grafo" in body.lower()
 
@@ -604,7 +614,7 @@ def test_the_machine_room_lists_the_projects(tmp_path):
     conn = db.connect(tmp_path / "s.db")
     projects.add(conn, "APH", "veritas")
     projects.add(conn, "TrasCarton", "personal")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=20.0)).get("/").text
     room = body.split('<dialog id="room">')[1]
     assert "APH" in room and "TrasCarton" in room
@@ -614,7 +624,7 @@ def test_a_scope_can_be_corrected(tmp_path):
     from nightshift import projects
     conn = db.connect(tmp_path / "s.db")
     pid = projects.add(conn, "Maradona", "veritas")   # guessed wrong
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post(f"/projects/{pid}", data={"scope": "personal"},
                 follow_redirects=False)
@@ -627,7 +637,7 @@ def test_a_project_can_be_retired_without_losing_its_past(tmp_path):
     from nightshift import projects
     conn = db.connect(tmp_path / "s.db")
     pid = projects.add(conn, "Viejo", "personal")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post(f"/projects/{pid}", data={"active": "0"}, follow_redirects=False)
     assert conn.execute("SELECT count(*) FROM projects").fetchone()[0] == 1
@@ -638,7 +648,7 @@ def test_an_unknown_scope_changes_nothing(tmp_path):
     from nightshift import projects
     conn = db.connect(tmp_path / "s.db")
     pid = projects.add(conn, "APH", "veritas")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=20.0))
     client.post(f"/projects/{pid}", data={"scope": "nada"}, follow_redirects=False)
     row = conn.execute("SELECT scope FROM projects WHERE id=?", (pid,)).fetchone()
@@ -657,7 +667,7 @@ def test_posting_a_merge_joins_two_projects(tmp_path):
     conn.execute("INSERT INTO project_paths (project_id, path) VALUES (?,?)",
                 (absorb_id, "/repos/brailleai"))
     conn.commit()
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
 
     r = client.post(f"/projects/{absorb_id}/merge", data={"into": str(keep_id)},
@@ -680,7 +690,7 @@ def test_merging_a_project_into_itself_changes_nothing(tmp_path):
     from nightshift import projects
     conn = db.connect(tmp_path / "s.db")
     pid = projects.add(conn, "solo", "personal")
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
 
     r = client.post(f"/projects/{pid}/merge", data={"into": str(pid)},
@@ -707,7 +717,7 @@ def test_posting_queue_run_redirects_and_runs_the_queue(tmp_path, monkeypatch):
                "reason": ""}
 
     monkeypatch.setattr(web_module.tick, "run", fake_run)
-    client = TestClient(web.make_app(conn, engine_source=_engines,
+    client = _client(web.make_app(conn, engine_source=_engines,
                                      ceiling_usd=5.0))
     r = client.post("/queue/run", follow_redirects=False)
     assert r.status_code == 303
@@ -721,14 +731,14 @@ def test_the_page_says_how_many_jobs_wait(tmp_path):
                  " VALUES ('x','one','queued'),('x','two','queued'),"
                  "('x','three','queued')")
     conn.commit()
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "3 en cola" in body
 
 
 def test_with_an_empty_queue_the_run_button_is_disabled(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     assert "nada en cola" in body
     tag = body[body.index('data-queue-run'):]
@@ -740,8 +750,80 @@ def test_with_an_empty_queue_the_run_button_is_disabled(tmp_path):
 
 def test_the_schedule_select_shows_the_new_labels(tmp_path):
     conn = db.connect(tmp_path / "s.db")
-    body = TestClient(web.make_app(conn, engine_source=_engines,
+    body = _client(web.make_app(conn, engine_source=_engines,
                                    ceiling_usd=5.0)).get("/").text
     for label in ("Dos veces por día", "Días de semana", "Cada hora",
                  "Cada 3 horas", "Cada dos semanas"):
         assert label in body, label
+
+
+# --- one machine, one page ------------------------------------------------
+
+def test_a_post_from_another_site_changes_nothing(tmp_path):
+    """A cross-site form POST needs no preflight, so the effect happens
+    before any answer is read. `/queue/run`, `/items/{id}/rehacer` and the
+    probe all spend the weekly quota, so any page open in the browser could
+    burn it."""
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post("/jobs", data={"prompt": "spend my quota"},
+                    headers={"origin": "https://evil.example"},
+                    follow_redirects=False)
+    assert r.status_code == 403
+    assert conn.execute("SELECT count(*) FROM jobs").fetchone()[0] == 0
+
+
+def test_a_post_that_the_browser_marks_cross_site_is_refused(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post("/jobs", data={"prompt": "spend my quota"},
+                    headers={"sec-fetch-site": "cross-site"},
+                    follow_redirects=False)
+    assert r.status_code == 403
+    assert conn.execute("SELECT count(*) FROM jobs").fetchone()[0] == 0
+
+
+def test_a_post_with_neither_header_still_works(tmp_path):
+    """This is a personal tool, and curl is how the owner drives it."""
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post("/jobs", data={"prompt": "from curl"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert conn.execute("SELECT count(*) FROM jobs").fetchone()[0] == 1
+
+
+def test_a_post_from_the_page_itself_works(tmp_path):
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post("/jobs", data={"prompt": "from the page"},
+                    headers={"origin": f"http://localhost:{web.PORT}",
+                             "sec-fetch-site": "same-origin"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert conn.execute("SELECT count(*) FROM jobs").fetchone()[0] == 1
+
+
+def test_a_request_for_another_host_is_refused(tmp_path):
+    """Without this check a name that resolves to 127.0.0.1 reaches the page
+    from any browser tab, which is how DNS rebinding works."""
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0),
+                     base_url="http://attacker.example")
+    assert client.get("/").status_code == 403
+
+
+def test_the_sign_in_link_never_leaves_this_machine(tmp_path):
+    """`POST /machines/cursor/login` answers with the sign-in link, and a
+    link of that kind is a credential."""
+    conn = db.connect(tmp_path / "s.db")
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+    r = client.post("/machines/cursor/login",
+                    headers={"origin": "https://evil.example"})
+    assert r.status_code == 403

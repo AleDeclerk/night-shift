@@ -24,4 +24,6 @@ if __name__ == "__main__":
     app = web.make_app(conn, quota.ceiling_usd())
 
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8899)
+    # web.PORT is the one definition: the guard in the app reads the same
+    # number, and a second copy here would drift away from it.
+    uvicorn.run(app, host="127.0.0.1", port=web.PORT)

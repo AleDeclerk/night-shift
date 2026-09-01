@@ -4,7 +4,7 @@ import datetime as dt
 import pathlib
 
 from fastapi import FastAPI, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -18,6 +18,14 @@ TEMPLATES = Jinja2Templates(
 # A measured cycle takes one to three minutes. Past this, a run that never
 # ended is dead, not busy.
 STALE_MINUTES = 15
+
+# The port the server binds, defined once. `scripts/serve.py` reads it, and so
+# does the guard below: a second copy would drift and open the page to a host
+# that the guard no longer knows.
+PORT = 8899
+
+# The names of this machine, and nothing else.
+LOCAL_NAMES = ("127.0.0.1", "localhost")
 
 # One flow at a time, in memory. A sign-in link is a credential, so it belongs
 # in no table and in no log.
@@ -58,11 +66,46 @@ def _when(iso: str) -> str:
 TEMPLATES.env.filters["when"] = _when
 
 
-def make_app(conn, ceiling_usd: float, engine_source=None) -> FastAPI:
+def make_app(conn, ceiling_usd: float, engine_source=None,
+             port: int = PORT) -> FastAPI:
     """`engine_source` lets a test inject engines. Without it the page runs the
     cheap checks, which take about five seconds when the cache is cold."""
     engines_of = engine_source or backends.check_all
     app = FastAPI()
+
+    hosts = {f"{name}:{port}" for name in LOCAL_NAMES}
+    origins = {f"http://{name}:{port}" for name in LOCAL_NAMES}
+
+    @app.middleware("http")
+    async def only_this_machine(request: Request, call_next):
+        """The page moves money, so it answers this machine alone.
+
+        A cross-site form POST is a simple request: the browser sends it with
+        no preflight, and the effect happens before any answer is read. Four
+        routes spend the weekly quota or start a sign-in, and one of them
+        answers with a sign-in link, which is a credential.
+
+        A `Host` that this server does not bind is a rebinding attack: a name
+        that resolves to 127.0.0.1 would reach the page from any tab.
+
+        A POST that carries neither `Origin` nor `Sec-Fetch-Site` passes.
+        This is a personal tool and curl is how the owner drives it, and a
+        browser always sends at least one of the two.
+        """
+        if request.headers.get("host") not in hosts:
+            return PlainTextResponse(
+                "This page answers this machine only.", status_code=403)
+        if request.method == "POST":
+            origin = request.headers.get("origin")
+            if origin is not None and origin not in origins:
+                return PlainTextResponse(
+                    "This page takes orders from itself only.",
+                    status_code=403)
+            if request.headers.get("sec-fetch-site") == "cross-site":
+                return PlainTextResponse(
+                    "This page takes orders from itself only.",
+                    status_code=403)
+        return await call_next(request)
 
     @app.get("/")
     def brief(request: Request):
