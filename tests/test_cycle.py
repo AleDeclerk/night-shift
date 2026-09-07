@@ -1,6 +1,6 @@
 import datetime as dt
 
-from nightshift import cycle, db, life, quota, usage
+from nightshift import cycle, db, engines, life, quota, usage
 
 NOW = dt.datetime(2026, 8, 26, 3, 0)
 READING = usage.Usage(week_pct=4,
@@ -167,6 +167,26 @@ def test_the_budget_stops_the_drafts_inside_one_cycle(tmp_path):
                    now=NOW, ceiling_usd=2.0, workspace=tmp_path)
     # 0.5 triage, then 0.8 and 0.8. The third draft never starts.
     assert stub.drafted == 2
+
+
+def test_a_full_claude_ceiling_does_not_stop_the_engine_that_writes(tmp_path):
+    """The point of the ladder: when one engine runs out, the next one works.
+
+    The gate before each draft compared a sum of dollars against the ceiling
+    of Claude, whatever engine held the pen. So a Cursor that had used one of
+    its sixty calls was stopped by a number that says nothing about it.
+    """
+    from nightshift.mail import Item
+    conn = db.connect(tmp_path / "s.db")
+    engines.set_mail_engine(conn, "cursor")
+    items = [Item("needs_you", f"m{i}", "w", f"https://x/{i}") for i in range(3)]
+    stub = Stub(items=items, cost=0.5)
+
+    cycle.run_once(conn, runner_module=stub, mail_module=stub,
+                   now=NOW, ceiling_usd=0.6, workspace=tmp_path,
+                   mail_engine="cursor")
+
+    assert stub.composed == 3
 
 
 def test_the_drafts_that_the_budget_stopped_are_visible(tmp_path):

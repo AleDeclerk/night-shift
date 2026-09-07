@@ -40,6 +40,20 @@ LADDER = (
 _BY_NAME = {step.name: step for step in LADDER}
 
 
+def step_for_engine(cli: str) -> Step:
+    """The step of the ladder that answers for one CLI.
+
+    A fixed engine names a CLI, not a step, and the room question is asked
+    of a step. Grok and Flash both speak through cursor-agent and share one
+    count, so the first match answers for both. An unknown name falls to the
+    first step, which is the strictest one.
+    """
+    for step in LADDER:
+        if step.engine == cli:
+            return step
+    return LADDER[0]
+
+
 def ceiling_of(step: Step) -> float:
     """What `step` may spend in a week, at the moment of the question.
 

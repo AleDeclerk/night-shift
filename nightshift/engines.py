@@ -12,7 +12,7 @@ import pathlib
 import re
 import subprocess
 
-from nightshift import backends
+from nightshift import backends, life
 
 # "auto" walks the cascade of nightshift.cascade instead of naming one CLI.
 # It is not itself a command: command_for and engines.run never see it, since
@@ -188,12 +188,23 @@ def _set_setting(conn, key: str, name: str, choices: tuple[str, ...]) -> None:
     conn.commit()
 
 
+def _record_change(conn, role: str, name: str) -> None:
+    """Keep the moment a setting changed.
+
+    The engine decides what every later run does, and nothing said when it
+    changed. So a run of last week could not be read: its engine was the one
+    set today, and the record of the change did not exist.
+    """
+    life.record(conn, "engine_changed", detail=f"{role} engine -> {name}")
+
+
 def get_engine(conn) -> str:
     return _get_setting(conn, SETTINGS_KEY)
 
 
 def set_engine(conn, name: str) -> None:
     _set_setting(conn, SETTINGS_KEY, name, JOB_ENGINES)
+    _record_change(conn, "job", name)
 
 
 def get_mail_engine(conn) -> str:
@@ -204,3 +215,4 @@ def get_mail_engine(conn) -> str:
 
 def set_mail_engine(conn, name: str) -> None:
     _set_setting(conn, MAIL_SETTINGS_KEY, name, MAIL_ENGINES)
+    _record_change(conn, "mail", name)

@@ -158,3 +158,18 @@ def test_read_usage_asks_the_cli_with_the_workspace_and_the_clock(
     assert seen["cwd"] == tmp_path
     assert seen["now"] == NOW
     assert conn is not None
+
+
+def test_a_reading_made_later_than_the_question_is_no_reading(tmp_path,
+                                                              monkeypatch):
+    """The freshness check only caught a reading that was too old.
+
+    A reading stamped after the moment of the question passed it, so asking
+    about a past moment answered with a number that did not exist yet. That
+    made a measurement of the past read as the present.
+    """
+    conn = db.connect(tmp_path / "s.db")
+    _answers(monkeypatch, READING)
+    quota.read_usage(conn, cwd=tmp_path, now=NOW)
+
+    assert quota.last_usage(conn, NOW - dt.timedelta(minutes=30)) is None

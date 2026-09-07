@@ -90,9 +90,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
     # "auto" walks the ladder once for the whole cycle, so every item in it
     # gets the same choice and the page can name the one engine that worked.
     compose_engine, compose_model = mail_engine, None
+    # Which step of the ladder answers for the engine that writes. The gate
+    # before each draft asks this step instead of a sum of dollars: a ceiling
+    # in dollars says nothing about a draft that Cursor writes.
+    gate_step = cascade.step_for_engine(mail_engine)
     if mail_engine == "auto":
         step = cascade.choose_and_record(conn, now)
         compose_engine, compose_model = step.engine, step.model
+        gate_step = step
 
     def keep(item, body) -> int:
         """Write one item and give back its id. Each item commits on its
@@ -119,7 +124,14 @@ def run_once(conn: sqlite3.Connection, *, runner_module, mail_module,
             # The ceiling is read here too, not only before the cycle. A
             # large inbox on the first run would otherwise spend a whole week
             # of quota before anything stopped it.
-            no_room = decision.spent_usd + spent >= ceiling_usd
+            # The ceiling in dollars judges only the engine that spends
+            # dollars. When another engine holds the pen, its own step
+            # answers, so a Cursor with fifty nine calls left is not stopped
+            # by a number that belongs to Claude.
+            if gate_step.unit == "usd":
+                no_room = decision.spent_usd + spent >= ceiling_usd
+            else:
+                no_room = not cascade.has_room(conn, gate_step, now)[0]
             if item.bucket == "needs_you" and no_room:
                 stopped_by_budget += 1
                 item_id = keep(item, item.body)

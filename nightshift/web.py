@@ -318,9 +318,17 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
         # The same two checks the cycle makes before a draft. A redo is one
         # more call on the same quota, and it is the only call that a person
         # can ask for again and again in a row.
+        # The step of the ladder that answers for the engine that writes.
+        # This asked the first step whatever engine held the pen, so a full
+        # week of Claude refused a redo that Cursor writes for free.
+        mail_engine = engines.get_mail_engine(conn)
+        gate_step = cascade.step_for_engine(mail_engine)
+        if mail_engine == "auto":
+            gate_step = cascade.choose(conn, now)[0]
         decision = quota.may_run(conn, now, ceiling_usd)
-        room_ok, room_reason = cascade.has_room(conn, cascade.LADDER[0], now)
-        if not decision.allowed or not room_ok:
+        room_ok, room_reason = cascade.has_room(conn, gate_step, now)
+        spends_usd = gate_step.unit == "usd"
+        if (spends_usd and not decision.allowed) or not room_ok:
             life.record(conn, "redo_refused", item_id=item_id, now=now,
                         detail=(decision.reason if not decision.allowed
                                 else room_reason)[:200])
@@ -330,7 +338,6 @@ def make_app(conn, ceiling_usd: float, engine_source=None,
                          body=drafts.reason_of(row["body"] or ""),
                          source_url=row["source_url"] or "",
                          excerpt=row["excerpt"] or "")
-        mail_engine = engines.get_mail_engine(conn)
         compose_engine, compose_model = mail_engine, None
         if mail_engine == "auto":
             step = cascade.choose_and_record(conn, now)

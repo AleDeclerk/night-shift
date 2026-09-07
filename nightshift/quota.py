@@ -128,7 +128,10 @@ def last_usage(conn: sqlite3.Connection, now: dt.datetime,
             session_resets=dt.datetime.fromisoformat(data["session_resets"]))
     except (KeyError, TypeError, ValueError):
         return None      # a row this cannot read is a row that says nothing
-    if now - at > dt.timedelta(minutes=max_age_minutes):
+    age = now - at
+    if age < dt.timedelta(0) or age > dt.timedelta(minutes=max_age_minutes):
+        # Too old, or made after the question. A reading of the future
+        # answers about a week that the question never saw.
         return None
     if now >= reading.week_resets:
         # The week the reading describes has ended. Past the reset

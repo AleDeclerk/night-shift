@@ -1209,3 +1209,35 @@ def test_the_top_bar_counts_when_there_is_no_reading(tmp_path):
     bar = body.split('<div class="timecard">')[1].split("cell--eng")[0]
     assert "de la semana" not in bar
     assert "0.0 / 20.0" in bar
+
+
+def test_a_redo_asks_the_engine_that_writes_not_always_claude(tmp_path,
+                                                              monkeypatch):
+    """The route asked the first step of the ladder whatever engine held the
+    pen. So a full week of Claude refused a redo that Cursor would write with
+    fifty nine of its sixty calls still free."""
+    from nightshift import engines as engines_module
+    from nightshift import web as web_module
+    from nightshift.engines import EngineRun
+    from nightshift.mail import DraftResult
+
+    conn = db.connect(tmp_path / "s.db")
+    engines_module.set_mail_engine(conn, "cursor")
+    item_id = _open_item(conn)
+    conn.execute("INSERT INTO runs (started_at, kind, ok, cost_usd)"
+                 " VALUES (?,'mail',1,9.0)", (dt.datetime.now().isoformat(),))
+    conn.commit()
+
+    monkeypatch.setattr(web_module.mail, "compose",
+                        lambda *a, **kw: EngineRun(True, text="Friday works.",
+                                                   cost_usd=0.1))
+    monkeypatch.setattr(web_module.mail, "save_draft",
+                        lambda *a, **kw: DraftResult(0.2, True, "Friday works."))
+    client = _client(web.make_app(conn, engine_source=_engines,
+                                  ceiling_usd=5.0))
+
+    client.post(f"/items/{item_id}/rehacer", follow_redirects=False)
+
+    refused = conn.execute(
+        "SELECT * FROM events WHERE kind='redo_refused'").fetchone()
+    assert refused is None

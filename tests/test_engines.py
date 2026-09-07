@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from nightshift import engines
+from nightshift import db, engines
 
 
 # --- command_for -----------------------------------------------------------
@@ -240,3 +240,18 @@ def test_a_failure_on_stderr_alone_still_fails_the_run(monkeypatch, tmp_path):
     r = engines.run("hello", engine="cursor", cwd=tmp_path)
     assert r.ok is False
     assert "not logged in" in r.error
+
+
+def test_a_change_of_engine_leaves_a_record(tmp_path):
+    """Six days of runs and no way to know which engine wrote them. The
+    setting is the one thing that changes what the system does, and nothing
+    said when it changed."""
+    conn = db.connect(tmp_path / "s.db")
+
+    engines.set_mail_engine(conn, "cursor")
+
+    row = conn.execute(
+        "SELECT * FROM events WHERE kind='engine_changed'").fetchone()
+    assert row is not None
+    assert "cursor" in row["detail"]
+    assert "mail" in row["detail"]
