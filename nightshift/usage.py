@@ -11,8 +11,10 @@ ceiling stays a count of calls.
 """
 import dataclasses
 import datetime as dt
+import getpass
 import json
 import math
+import os
 import re
 import subprocess
 
@@ -85,15 +87,35 @@ def from_cli_output(raw: str, *, now: dt.datetime) -> Usage | None:
     return parse(text, now=now)
 
 
+def _env() -> dict:
+    """The environment of the call, with USER filled in.
+
+    launchd starts a job with no USER, and without it the CLI does not fail:
+    it answers the question of `/cost` instead, with is_error false. So the
+    reading came back empty on every scheduled run for six days, while a
+    call from a shell worked. The name is filled in here, so the answer does
+    not depend on who starts the process.
+    """
+    env = dict(os.environ)
+    env.setdefault("USER", getpass.getuser())
+    return env
+
+
 def read(*, cwd, binary: str = "claude", timeout: int = 120,
-         now: dt.datetime | None = None) -> Usage | None:
-    """Ask the CLI. None when it cannot answer, and the caller must then fall
-    back to counting: a governor that trusts a blank answer spends blind."""
+         now: dt.datetime | None = None) -> tuple[Usage | None, str]:
+    """Ask the CLI. This gives the reading and the answer it came from.
+
+    None as the reading means the caller must fall back to counting: a
+    governor that trusts a blank answer spends blind. The text is the
+    evidence, because a CLI that answers a different question looks exactly
+    like a CLI that answered nothing, and only the text tells them apart.
+    """
     now = now or dt.datetime.now()
     try:
         out = subprocess.run([binary, "-p", "/usage", "--output-format", "json"],
                              cwd=cwd, capture_output=True, text=True,
-                             timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return from_cli_output(out.stdout or "", now=now)
+                             timeout=timeout, env=_env())
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"{type(exc).__name__}: {exc}"[:400]
+    answer = out.stdout or ""
+    return from_cli_output(answer, now=now), answer

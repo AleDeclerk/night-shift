@@ -174,7 +174,7 @@ def test_a_tick_reads_the_real_quota_and_stores_it(tmp_path, monkeypatch):
     """A page load may not shell out, and one `/usage` call takes about three
     seconds. The tick makes the call and the page reads what it left."""
     conn = db.connect(tmp_path / "s.db")
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: READING)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (READING, ""))
 
     tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path, now=NOW,
              ceiling_usd=20.0)
@@ -217,7 +217,7 @@ def test_a_quiet_week_fires_the_standing_work(tmp_path, monkeypatch):
     threshold of 15."""
     conn = db.connect(tmp_path / "s.db")
     _idle_template(conn)
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: _reading(4))
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (_reading(4), ""))
 
     result = tick.run(conn, runner_module=FakeRunner(
         {"finished": True, "summary": "done"}), workspace=tmp_path, now=NOW,
@@ -230,7 +230,7 @@ def test_a_busy_week_leaves_the_standing_work_waiting(tmp_path, monkeypatch):
     """Week 25% used and seven days left: the allowance is 5, below 15."""
     conn = db.connect(tmp_path / "s.db")
     template = _idle_template(conn)
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: _reading(25))
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (_reading(25), ""))
 
     result = tick.run(conn, runner_module=FakeRunner(), workspace=tmp_path,
                       now=NOW, ceiling_usd=20.0)

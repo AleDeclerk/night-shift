@@ -65,7 +65,7 @@ READING = usage.Usage(week_pct=4,
 
 def _answers(monkeypatch, reading):
     """The CLI, replaced. A page load and a test never shell out."""
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: reading)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (reading, ""))
 
 
 def test_read_usage_stores_the_four_numbers(tmp_path, monkeypatch):
@@ -150,7 +150,7 @@ def test_read_usage_asks_the_cli_with_the_workspace_and_the_clock(
 
     def spy(**kw):
         seen.update(kw)
-        return READING
+        return READING, ""
 
     monkeypatch.setattr(quota.usage, "read", spy)
     quota.read_usage(conn := db.connect(tmp_path / "s.db"), cwd=tmp_path,

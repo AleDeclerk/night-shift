@@ -283,7 +283,7 @@ def _store_reading(conn, monkeypatch, *, week_pct=4, session_pct=35,
     reading = usage.Usage(week_pct=week_pct, week_resets=WEEK_RESETS,
                           session_pct=session_pct,
                           session_resets=SESSION_RESETS)
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: reading)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (reading, ""))
     quota.read_usage(conn, cwd="/tmp", now=now)
     return reading
 

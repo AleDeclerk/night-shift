@@ -92,9 +92,13 @@ def read_usage(conn: sqlite3.Connection, *, cwd, now: dt.datetime,
     The tick and the cycle make it once, and every later reader rebuilds the
     numbers from the event with `last_usage`.
     """
-    reading = usage.read(cwd=cwd, binary=binary, now=now)
+    reading, answer = usage.read(cwd=cwd, binary=binary, now=now)
     if reading is None:
-        life.record(conn, "usage_unavailable", detail=NO_READING, now=now)
+        # The answer goes into the record. A CLI that answers a different
+        # question reports success and gives no reading, exactly like a CLI
+        # that answered nothing, so a constant here hides which one happened.
+        life.record(conn, "usage_unavailable",
+                    detail=f"{NO_READING}: {answer[:300]!r}", now=now)
         return None
     life.record(conn, "usage_read", detail=_as_json(reading), now=now)
     return reading

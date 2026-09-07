@@ -567,7 +567,7 @@ def test_a_job_that_failed_is_charged_too(tmp_path):
 
 def test_the_cycle_reads_the_real_quota_and_stores_it(tmp_path, monkeypatch):
     conn = db.connect(tmp_path / "s.db")
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: READING)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (READING, ""))
     stub = Stub()
 
     cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
@@ -583,7 +583,7 @@ def test_the_cycle_reads_the_quota_after_the_mail_keeps_its_place(
     conn = db.connect(tmp_path / "s.db")
     order = []
     monkeypatch.setattr(quota.usage, "read",
-                        lambda **kw: order.append("usage") or READING)
+                        lambda **kw: (order.append("usage"), READING, "")[1:])
 
     class Watcher(Stub):
         def triage(self, *a, **kw):
@@ -607,7 +607,7 @@ def test_a_cycle_that_never_fetched_the_mail_asks_for_no_reading(tmp_path,
     conn.commit()
     asked = []
     monkeypatch.setattr(quota.usage, "read",
-                        lambda **kw: asked.append(1) or READING)
+                        lambda **kw: (asked.append(1), READING, "")[1:])
     stub = Stub()
 
     cycle.run_once(conn, runner_module=stub, mail_module=stub, now=NOW,
@@ -625,7 +625,7 @@ QUIET = usage.Usage(week_pct=4,
 
 
 def _store(conn, monkeypatch, reading, now=NOW):
-    monkeypatch.setattr(quota.usage, "read", lambda **kw: reading)
+    monkeypatch.setattr(quota.usage, "read", lambda **kw: (reading, ""))
     quota.read_usage(conn, cwd="/tmp", now=now)
 
 

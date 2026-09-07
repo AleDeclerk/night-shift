@@ -2,6 +2,7 @@
 import datetime as dt
 
 from nightshift import usage
+from tests.conftest import REAL_READ
 
 # Verbatim output of `claude -p /usage` on 2026-09-01.
 SAMPLE = """You are currently using your subscription to power your Claude Code usage
@@ -83,3 +84,45 @@ def test_a_reset_on_the_round_hour_is_read():
     assert u.week_resets == dt.datetime(2026, 9, 8, 6, 0)
     assert u.session_pct == 61
     assert u.session_resets == dt.datetime(2026, 9, 1, 20, 40)
+
+
+# Verbatim answer of `claude -p /usage` when the environment holds no USER,
+# captured on 2026-09-07. The CLI does not fail: it answers the question of
+# `/cost` instead, with is_error false and subtype success.
+NO_USER_ANSWER = (
+    '{"is_error":false,"subtype":"success","total_cost_usd":0,'
+    '"result":"Total cost:            $0.0000\\n'
+    'Total duration (API):  0s\\nUsage:                 0 input, 0 output"}')
+
+
+def test_the_call_names_the_user(monkeypatch):
+    """launchd starts a job with no USER, and without it the CLI answers a
+    different question. The call fills the name in, so the reading does not
+    depend on who starts the process."""
+    seen = {}
+
+    def spy(argv, **kw):
+        seen.update(kw)
+        return type("P", (), {"stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(usage, "read", REAL_READ)
+    monkeypatch.setattr(usage.subprocess, "run", spy)
+    usage.read(cwd=".", now=NOW)
+
+    assert seen["env"]["USER"]
+
+
+def test_an_answer_to_another_question_is_kept_as_evidence(monkeypatch):
+    """A CLI that answers `/cost` looks exactly like a CLI that answered
+    nothing: both give no reading. Only the text tells them apart, so the
+    text comes back with the reading."""
+    def spy(argv, **kw):
+        return type("P", (), {"stdout": NO_USER_ANSWER, "stderr": ""})()
+
+    monkeypatch.setattr(usage, "read", REAL_READ)
+    monkeypatch.setattr(usage.subprocess, "run", spy)
+
+    reading, answer = usage.read(cwd=".", now=NOW)
+
+    assert reading is None
+    assert "Total cost" in answer
